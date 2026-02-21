@@ -1,0 +1,12 @@
+# Dependencies
+node_modules/
+
+# Env (dev secrets / local overrides)
+.env
+.env.local
+.env.*.local
+
+# Build / cache
+.next/
+dist/
+*.log

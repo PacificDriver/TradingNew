@@ -1,0 +1,385 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Заголовки: Scumbria (геометрический), fallback Unbounded */
+@font-face {
+  font-family: "Scumbria";
+  src: url("/fonts/Scumbria-Regular.woff2") format("woff2"),
+       url("/fonts/Scumbria-Regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Scumbria";
+  src: url("/fonts/Scumbria-Bold.woff2") format("woff2"),
+       url("/fonts/Scumbria-Bold.woff") format("woff");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Текст и подзаголовки: Aneliza (спокойный гротеск), fallback Manrope */
+@font-face {
+  font-family: "Aneliza";
+  src: url("/fonts/Aneliza-Regular.woff2") format("woff2"),
+       url("/fonts/Aneliza-Regular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Aneliza";
+  src: url("/fonts/Aneliza-SemiBold.woff2") format("woff2"),
+       url("/fonts/Aneliza-SemiBold.woff") format("woff");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  --font-display: "Scumbria", var(--font-unbounded), ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Aneliza", var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  /* Стекло в стиле iOS: прозрачность + blur (умеренный blur = меньше лагов) */
+  --glass-bg: rgba(22, 26, 30, 0.5);
+  --glass-bg-strong: rgba(22, 26, 30, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-border-top: rgba(255, 255, 255, 0.09);
+  --glass-blur: 10px;
+  --glass-blur-strong: 16px;
+  --glass-saturate: 1.12;
+  --glass-strong-saturate: 1.08;
+  --glass-shadow-soft: 0 8px 30px rgba(2, 6, 23, 0.28);
+  --glass-shadow-accent: 0 0 30px rgba(240, 185, 11, 0.1);
+  --ring-accent: rgba(240, 185, 11, 0.35);
+}
+
+html {
+  background: #0B0E11;
+  overscroll-behavior: none;
+}
+
+body {
+  @apply bg-background text-slate-100 antialiased;
+  font-family: var(--font-body);
+  overscroll-behavior: none;
+}
+
+/* Стекло: blur + насыщение фона + блик по верхнему краю */
+.glass,
+.glass-panel,
+.card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border: 1px solid var(--glass-border);
+  border-radius: 0.75rem;
+  transform: translateZ(0);
+  /* Блик по верхнему краю — как свет на стекле */
+  box-shadow: inset 0 1px 0 0 var(--glass-border-top), var(--glass-shadow-soft);
+}
+.card {
+  @apply p-4;
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-border-top),
+    var(--glass-shadow-accent),
+    0 0 0 1px rgba(255, 255, 255, 0.03);
+}
+.glass-panel {
+  @apply p-4;
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-border-top),
+    0 1px 0 0 rgba(255, 255, 255, 0.02);
+}
+.glass-strong {
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-strong-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong)) saturate(var(--glass-strong-saturate));
+  border: 1px solid var(--glass-border);
+  border-radius: 0.75rem;
+  transform: translateZ(0);
+  box-shadow: inset 0 1px 0 0 var(--glass-border-top);
+}
+
+.btn {
+  @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold transition-colors;
+}
+
+.btn-primary {
+  @apply btn text-black;
+  background: linear-gradient(135deg, #F0B90B 0%, #E5A506 100%);
+  box-shadow: 0 0 24px rgba(240, 185, 11, 0.35), 0 0 0 1px rgba(240, 185, 11, 0.2);
+  border-radius: 0.5rem;
+}
+
+.btn-outline {
+  @apply btn border border-slate-600 bg-slate-900/40 hover:bg-slate-800/80;
+}
+
+/* Поля формы в едином glass-стиле */
+.input-glass {
+  @apply w-full rounded-xl glass py-3 px-4 text-sm text-slate-100 placeholder-slate-500 outline-none transition-all;
+}
+.input-glass:focus {
+  border-color: var(--ring-accent);
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-border-top),
+    0 0 0 1px rgba(240, 185, 11, 0.2),
+    0 0 24px rgba(240, 185, 11, 0.12);
+}
+
+/* Компактные переключатели/чипы */
+.chip {
+  @apply rounded-full px-2.5 py-1 text-[11px] transition-colors;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: rgb(148 163 184);
+}
+.chip:hover {
+  background: rgba(30, 41, 59, 0.75);
+  color: rgb(226 232 240);
+}
+.chip-active {
+  border-color: rgba(240, 185, 11, 0.35);
+  background: rgba(240, 185, 11, 0.12);
+  color: #f0b90b;
+}
+
+/* Единый стиль скролл-контейнеров внутри таблиц/дропдаунов */
+.surface-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.38) transparent;
+}
+.surface-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.surface-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+}
+.surface-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.42);
+}
+
+/* График: анимация маркеров сделок (точки входа/выхода) */
+@keyframes trade-dot-ripple {
+  0% {
+    opacity: 0.5;
+    transform: scale(0.3);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes trade-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.12);
+  }
+}
+
+/* WIN/LOSS overlay: появление, удержание, исчезновение */
+@keyframes settled-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  18% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  28% {
+    transform: scale(1);
+  }
+  76% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.08);
+  }
+}
+
+.animate-settled-pop {
+  animation: settled-pop 2.6s ease-out forwards;
+}
+
+/* Компактный отклик WIN/LOSS внутри графика */
+@keyframes chart-result-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-chart-result-in {
+  animation: chart-result-in 0.35s ease-out forwards;
+}
+
+/* --- Фон: кольца градиентов, видимое взаимодействие со стеклом + оптимизация --- */
+.gradient-bg-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* Изоляция: меньше перерисовок при скролле/анимации контента */
+  contain: layout paint;
+  transform: translateZ(0);
+}
+
+.gradient-ring {
+  position: absolute;
+  border-radius: 50%;
+  /* Умеренный blur: баланс красоты и производительности */
+  filter: blur(60px);
+  pointer-events: none;
+  /* GPU-слой для плавной анимации (только transform/opacity) */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Центр — белый, к краям — цветной градиент. Кольцо 1: янтарный */
+.gradient-ring-1 {
+  width: min(92vw, 760px);
+  height: min(92vw, 760px);
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 255, 255, 0.2) 0%,
+    rgba(255, 255, 255, 0.06) 28%,
+    transparent 36%,
+    rgba(245, 158, 11, 0.32) 44%,
+    rgba(217, 119, 6, 0.12) 52%,
+    transparent 62%
+  );
+  top: -22%;
+  left: -18%;
+  animation: ring-wave 20s ease-in-out infinite, ring-pulse 10s ease-in-out infinite;
+}
+
+/* Кольцо 2: бирюзовый */
+.gradient-ring-2 {
+  width: min(82vw, 660px);
+  height: min(82vw, 660px);
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.05) 30%,
+    transparent 38%,
+    rgba(20, 184, 166, 0.28) 46%,
+    rgba(13, 148, 136, 0.1) 55%,
+    transparent 65%
+  );
+  top: -12%;
+  right: -14%;
+  animation: ring-wave 22s ease-in-out infinite reverse 1s, ring-pulse 11s ease-in-out infinite 0.5s;
+}
+
+/* Кольцо 3: фиолетовый */
+.gradient-ring-3 {
+  width: min(74vw, 580px);
+  height: min(74vw, 580px);
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.05) 32%,
+    transparent 40%,
+    rgba(139, 92, 246, 0.26) 48%,
+    rgba(124, 58, 237, 0.09) 56%,
+    transparent 67%
+  );
+  bottom: -8%;
+  left: 4%;
+  animation: ring-wave 24s ease-in-out infinite 0.5s, ring-pulse 10s ease-in-out infinite 1s;
+}
+
+/* Кольцо 4: коралловый */
+.gradient-ring-4 {
+  width: min(70vw, 520px);
+  height: min(70vw, 520px);
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.04) 32%,
+    transparent 42%,
+    rgba(251, 113, 133, 0.24) 50%,
+    rgba(244, 63, 94, 0.08) 58%,
+    transparent 69%
+  );
+  bottom: 8%;
+  right: -2%;
+  animation: ring-wave 26s ease-in-out infinite reverse 0.8s, ring-pulse 11s ease-in-out infinite 2s;
+}
+
+/* Кольцо 5: холодный синий */
+.gradient-ring-5 {
+  width: min(62vw, 460px);
+  height: min(62vw, 460px);
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.04) 34%,
+    transparent 44%,
+    rgba(96, 165, 250, 0.22) 52%,
+    rgba(59, 130, 246, 0.08) 60%,
+    transparent 71%
+  );
+  top: 44%;
+  left: 50%;
+  margin-left: min(-31vw, -230px);
+  margin-top: min(-31vw, -230px);
+  animation: ring-wave 28s ease-in-out infinite 0.3s, ring-pulse 12s ease-in-out infinite 1.5s;
+}
+
+/* Плавное волнообразное движение: только transform + opacity (GPU) */
+@keyframes ring-wave {
+  0%, 100% { transform: translateZ(0) translate(0, 0) scale(1); }
+  12.5% { transform: translateZ(0) translate(3%, -2.5%) scale(1.015); }
+  25% { transform: translateZ(0) translate(2.5%, 2.5%) scale(1); }
+  37.5% { transform: translateZ(0) translate(-2%, 1.5%) scale(0.99); }
+  50% { transform: translateZ(0) translate(-3%, -2%) scale(1.01); }
+  62.5% { transform: translateZ(0) translate(-1.5%, 2%) scale(1); }
+  75% { transform: translateZ(0) translate(2%, -1%) scale(1.015); }
+  87.5% { transform: translateZ(0) translate(1.5%, 0.5%) scale(0.995); }
+}
+
+@keyframes ring-pulse {
+  0%, 100% { opacity: 0.75; }
+  50% { opacity: 1; }
+}
+
+/* Мобильные: меньше blur + только 3 кольца (визуально достаточно, меньше GPU) */
+@media (max-width: 768px) {
+  .gradient-ring {
+    filter: blur(48px);
+  }
+  .gradient-ring-4,
+  .gradient-ring-5 {
+    visibility: hidden;
+    pointer-events: none;
+    animation: none;
+  }
+}
+
+/* Низкая производительность: отключаем анимацию, статичная картинка */
+@media (prefers-reduced-motion: reduce) {
+  .gradient-ring-1, .gradient-ring-2, .gradient-ring-3, .gradient-ring-4, .gradient-ring-5 {
+    animation: none !important;
+    opacity: 0.9;
+  }
+}

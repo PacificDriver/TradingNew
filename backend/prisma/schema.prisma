@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               Int      @id @default(autoincrement())
+  email            String   @unique
+  name             String?
+  password         String
+  demoBalance      Decimal  @default(1000.00)
+  isAdmin          Boolean  @default(false)
+  referralCode     String?  @unique
+  referrerId       Int?
+  referrer         User?    @relation("ReferralRelation", fields: [referrerId], references: [id])
+  referred         User[]   @relation("ReferralRelation")
+  referralBalance  Decimal  @default(0)
+  referralClicks   Int      @default(0)
+  totpSecret         String?
+  totpEnabled        Boolean  @default(false)
+  blockedAt          DateTime?  // полная блокировка: торги и вывод запрещены
+  withdrawBlockedAt  DateTime?  // частичная: вывод запрещён, торги разрешены
+  blockReason        String?
+  trades               Trade[]
+  sessions             Session[]
+  supportThread        SupportThread?
+  paymentTransactions  PaymentTransaction[]
+  createdAt            DateTime @default(now())
+}
+
+model Session {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip          String?
+  userAgent   String?
+  osShort     String?
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+  @@index([userId])
+}
+
+model TradingPair {
+  id           Int           @id @default(autoincrement())
+  symbol       String        @unique
+  name         String
+  currentPrice Decimal       @default(100.00)
+  trades       Trade[]
+  ohlcCandles  OhlcCandle[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model OhlcCandle {
+  id             Int         @id @default(autoincrement())
+  tradingPairId  Int
+  tradingPair    TradingPair @relation(fields: [tradingPairId], references: [id], onDelete: Cascade)
+  timeframe      String
+  startTime      DateTime
+  open           Decimal
+  high           Decimal
+  low            Decimal
+  close          Decimal
+  @@unique([tradingPairId, timeframe, startTime])
+  @@index([tradingPairId, timeframe, startTime])
+}
+
+enum TradeStatus {
+  ACTIVE
+  WIN
+  LOSS
+}
+
+enum TradeDirection {
+  LONG
+  SHORT
+}
+
+model Trade {
+  id            Int            @id @default(autoincrement())
+  user          User           @relation(fields: [userId], references: [id])
+  userId        Int
+  tradingPair   TradingPair    @relation(fields: [tradingPairId], references: [id])
+  tradingPairId Int
+  amount        Decimal
+  direction     TradeDirection
+  entryPrice    Decimal
+  closePrice    Decimal?
+  status        TradeStatus    @default(ACTIVE)
+  expiresAt     DateTime
+  createdAt     DateTime       @default(now())
+}
+
+model SupportThread {
+  id        Int              @id @default(autoincrement())
+  userId    Int              @unique
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  SupportMessage[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model SupportMessage {
+  id        Int           @id @default(autoincrement())
+  threadId  Int
+  thread    SupportThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role      String        // "user" | "admin"
+  authorId  Int?
+  body      String
+  createdAt DateTime      @default(now())
+  @@index([threadId])
+}
+
+// HighHelp: пополнение и вывод (P2P payin/payout)
+model PaymentTransaction {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type         String   // "payin" | "payout"
+  amount       Decimal  // сумма в основных единицах (рубли/доллары)
+  currency     String   @default("RUB")
+  paymentId    String   // наш уникальный id заявки (уникален в рамках кассы)
+  requestId    String?  // request_id от HighHelp
+  status       String   @default("pending") // pending, processing, success, decline, error
+  subStatus    String?
+  method       String?  // card-p2p, sbp-p2p, etc.
+  formUrl      String?  // для payin — ссылка на платёжную страницу
+  rawPayload   String?  // JSON последнего ответа/колбека
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  @@unique([paymentId])
+  @@index([userId])
+  @@index([status])
+}
+
+// Защита от повторной обработки колбеков HighHelp
+model ProcessedCallback {
+  idempotencyKey String   @id // project_id:payment_id:status:sub_status
+  createdAt       DateTime @default(now())
+}
+

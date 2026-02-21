@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aura Trade — Premium Binary Options Platform</title>
+  <meta name="description" content="Aura Trade — премиальная платформа бинарных опционов. Розыгрыш 2 квартир, 3 BMW M5 CS и денежных призов." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- Background glow orbs (CSS-only, low cost) -->
+  <div class="bg-glows" aria-hidden="true">
+    <div class="bg-glow bg-glow--gold"></div>
+    <div class="bg-glow bg-glow--teal"></div>
+    <div class="bg-glow bg-glow--purple"></div>
+    <div class="bg-glow bg-glow--blue"></div>
+    <div class="bg-glow bg-glow--amber"></div>
+  </div>
+  <!-- ═══════════════════ NAV ═══════════════════ -->
+  <nav class="nav" id="nav">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">
+        <img src="assets/images/logo.png" alt="Aura Trade" class="nav-logo-img" />
+        <span>Aura Trade</span>
+      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="#prizes">Призы</a>
+        <a href="#how">Как участвовать</a>
+        <a href="#faq">FAQ</a>
+      </div>
+      <a href="#" class="btn-gold btn-sm nav-cta">Начать торговать</a>
+      <button class="burger" id="burger" aria-label="Menu"><span></span><span></span><span></span></button>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════ HERO ═══════════════════ -->
+  <section class="hero" id="hero">
+    <!-- Three.js: aura + floating BMW, fills full hero -->
+    <canvas class="hero-3d" id="hero3d"></canvas>
+
+    <div class="hero-content" data-reveal>
+      <span class="hero-badge">Aura Trade · Grand Launch 2026</span>
+      <div class="hero-title-badge">
+        <h1 class="hero-title">Торгуй и выигрывай<br />премиальные призы</h1>
+      </div>
+      <p class="hero-sub">
+        Мы открылись и разыгрываем среди активных трейдеров:
+        <strong>2 квартиры</strong> в столице вашей страны,
+        <strong>3 автомобиля BMW&nbsp;M5&nbsp;CS</strong> и
+        <strong>3 денежных приза</strong> — $100&nbsp;000, $50&nbsp;000 и $20&nbsp;000.
+      </p>
+      <div class="hero-cta">
+        <a href="#" class="btn-gold">Начать торговать</a>
+        <a href="#prizes" class="btn-glass">Подробнее ↓</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ KPI STRIP ═══════════════════ -->
+  <section class="kpi-section">
+    <div class="container">
+      <div class="kpi-strip">
+        <div class="kpi-card" data-reveal><span class="kpi-val" data-count="8">0</span><span class="kpi-label">ключевых призов</span></div>
+        <div class="kpi-card" data-reveal><span class="kpi-val">$<span data-count="170">0</span>K</span><span class="kpi-label">общий призовой фонд</span></div>
+        <div class="kpi-card" data-reveal><span class="kpi-val" data-count="100">0</span><span class="kpi-label">$ welcome-бонус</span></div>
+        <div class="kpi-card" data-reveal><span class="kpi-val" data-count="250">0</span><span class="kpi-label">сделок для вывода бонуса</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ PRIZES ═══════════════════ -->
+  <section class="prizes" id="prizes">
+    <div class="container">
+      <div class="section-tag" data-reveal>Розыгрыш</div>
+      <h2 class="section-title" data-reveal>Активным трейдерам —<br />лучшие призы</h2>
+      <p class="section-sub" data-reveal>Чем больше сделок проводит трейдер — тем больше получает очков. Система рейтинга обновляется в реальном времени.</p>
+      <div class="prize-grid">
+        <article class="prize-card" data-reveal data-tilt>
+          <div class="prize-card-glow"></div>
+          <div class="prize-icon"><svg viewBox="0 0 48 48" fill="none"><rect x="6" y="18" width="36" height="24" rx="3" stroke="currentColor" stroke-width="2"/><path d="M6 26h36M18 18v24M30 18v24" stroke="currentColor" stroke-width="1.5" opacity=".5"/><path d="M14 10h20l4 8H10l4-8z" stroke="currentColor" stroke-width="2"/></svg></div>
+          <span class="prize-count">×2</span><h3>Квартиры</h3>
+          <p>В столице вашей страны. Премиальная недвижимость для лучших участников.</p>
+          <span class="prize-value">Главный приз</span>
+        </article>
+        <article class="prize-card featured" data-reveal data-tilt>
+          <div class="prize-card-glow"></div>
+          <div class="prize-icon"><svg viewBox="0 0 48 48" fill="none"><rect x="4" y="24" width="40" height="12" rx="4" stroke="currentColor" stroke-width="2"/><path d="M14 24c0-6 4-12 10-12s10 6 10 12" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="36" r="4" stroke="currentColor" stroke-width="2"/><circle cx="36" cy="36" r="4" stroke="currentColor" stroke-width="2"/></svg></div>
+          <span class="prize-count">×3</span><h3>BMW M5 CS</h3>
+          <p>Автомобили премиум-класса. Скорость, мощность и статус для победителей.</p>
+          <span class="prize-value">635 л.с.</span>
+        </article>
+        <article class="prize-card" data-reveal data-tilt>
+          <div class="prize-card-glow"></div>
+          <div class="prize-icon"><svg viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="18" stroke="currentColor" stroke-width="2"/><path d="M24 14v20M18 20h12l-2 5H20l-2 5h12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></div>
+          <span class="prize-count">×3</span><h3>Денежные призы</h3>
+          <p>$100&nbsp;000, $50&nbsp;000 и $20&nbsp;000 — прямо на ваш счёт.</p>
+          <span class="prize-value">$170 000</span>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ BONUS ═══════════════════ -->
+  <section class="bonus" id="bonus">
+    <div class="container">
+      <div class="bonus-card glass" data-reveal>
+        <div class="bonus-glow"></div>
+        <div class="bonus-content">
+          <span class="bonus-tag">До 01.03.2026</span>
+          <h2>Приветственный бонус<br /><span class="gold">$100</span> каждому трейдеру</h2>
+          <p>Зарегистрируйтесь на Aura Trade и получите бонус $100 на торговый счёт для старта.</p>
+          <a href="#" class="btn-gold">Получить бонус</a>
+        </div>
+        <div class="bonus-fine">* Вывод бонуса доступен после выполнения 250 сделок.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ HOW IT WORKS ═══════════════════ -->
+  <section class="how" id="how">
+    <div class="container">
+      <div class="section-tag" data-reveal>Как это работает</div>
+      <h2 class="section-title" data-reveal>Три шага до участия<br />в розыгрыше</h2>
+      <div class="steps-row">
+        <article class="step-card" data-reveal><span class="step-num">01</span><div class="step-icon-wrap"><svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="14" r="8" stroke="currentColor" stroke-width="2"/><path d="M6 36c0-8 6-14 14-14s14 6 14 14" stroke="currentColor" stroke-width="2"/></svg></div><h3>Зарегистрируйтесь</h3><p>Создайте аккаунт за 30 секунд и получите welcome-бонус $100.</p></article>
+        <div class="step-connector" data-reveal><span></span></div>
+        <article class="step-card" data-reveal><span class="step-num">02</span><div class="step-icon-wrap"><svg viewBox="0 0 40 40" fill="none"><rect x="4" y="6" width="32" height="28" rx="4" stroke="currentColor" stroke-width="2"/><polyline points="8,28 14,18 20,22 26,12 32,16" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/></svg></div><h3>Торгуйте</h3><p>Открывайте сделки по бинарным опционам. Каждая сделка = очки в рейтинге.</p></article>
+        <div class="step-connector" data-reveal><span></span></div>
+        <article class="step-card" data-reveal><span class="step-num">03</span><div class="step-icon-wrap"><svg viewBox="0 0 40 40" fill="none"><path d="M20 4l4.5 9 10 1.5-7.2 7 1.7 10L20 27l-9 4.5 1.7-10-7.2-7 10-1.5z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></div><h3>Выигрывайте</h3><p>Поднимайтесь в таблице лидеров. Топовые места получают главные призы.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ STATS / CHARTS ═══════════════════ -->
+  <section class="stats" id="stats">
+    <div class="container">
+      <div class="section-tag" data-reveal>Статистика</div>
+      <h2 class="section-title" data-reveal>Логика начисления очков</h2>
+      <p class="section-sub" data-reveal>Простая механика: торгуйте, копите очки и поднимайтесь выше в рейтинге.</p>
+      <div class="stats-grid">
+        <article class="chart-panel glass" data-reveal>
+          <h3 class="chart-heading">Прогноз активности по неделям</h3>
+          <svg class="line-chart" viewBox="0 0 700 240" preserveAspectRatio="none">
+            <defs><linearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="rgba(240,185,11,0.25)"/><stop offset="100%" stop-color="rgba(240,185,11,0)"/></linearGradient></defs>
+            <polygon class="chart-area" points="20,210 120,185 230,158 340,125 440,98 540,64 640,38 700,22 700,240 20,240" fill="url(#lineGrad)" opacity="0"/>
+            <polyline class="chart-line" points="20,210 120,185 230,158 340,125 440,98 540,64 640,38 700,22"/>
+            <g class="chart-dots"><circle cx="20" cy="210" r="4"/><circle cx="120" cy="185" r="4"/><circle cx="230" cy="158" r="4"/><circle cx="340" cy="125" r="4"/><circle cx="440" cy="98" r="4"/><circle cx="540" cy="64" r="4"/><circle cx="640" cy="38" r="4"/><circle cx="700" cy="22" r="4"/></g>
+          </svg>
+        </article>
+        <article class="chart-panel glass" data-reveal>
+          <h3 class="chart-heading">Система очков</h3>
+          <div class="bar-list">
+            <div class="bar-row"><span class="bar-label">1 сделка</span><div class="bar-track"><div class="bar" data-w="12"></div></div><span class="bar-val">+1</span></div>
+            <div class="bar-row"><span class="bar-label">50 сделок</span><div class="bar-track"><div class="bar bar-teal" data-w="38"></div></div><span class="bar-val">+65</span></div>
+            <div class="bar-row"><span class="bar-label">100 сделок</span><div class="bar-track"><div class="bar bar-purple" data-w="58"></div></div><span class="bar-val">+145</span></div>
+            <div class="bar-row"><span class="bar-label">250 сделок</span><div class="bar-track"><div class="bar bar-gold" data-w="100"></div></div><span class="bar-val">+420</span></div>
+          </div>
+          <h3 class="chart-heading" style="margin-top:20px">Призовой фонд</h3>
+          <div class="donut-row">
+            <div class="donut"><div class="donut-hole"></div></div>
+            <ul class="legend"><li><span class="dot dot-gold"></span>Квартиры <strong>40%</strong></li><li><span class="dot dot-teal"></span>BMW M5 CS <strong>30%</strong></li><li><span class="dot dot-purple"></span>Деньги <strong>30%</strong></li></ul>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ FAQ ═══════════════════ -->
+  <section class="faq-section" id="faq">
+    <div class="container">
+      <div class="section-tag" data-reveal>FAQ</div>
+      <h2 class="section-title" data-reveal>Часто задаваемые вопросы</h2>
+      <div class="faq-list">
+        <details class="faq-item" data-reveal><summary>Как попасть в розыгрыш?</summary><div class="faq-body">Достаточно зарегистрироваться и активно торговать на Aura Trade. Чем больше сделок — тем больше очков и тем выше позиция в таблице лидеров.</div></details>
+        <details class="faq-item" data-reveal><summary>Когда можно вывести бонус $100?</summary><div class="faq-body">Приветственный бонус участвует в торговом обороте. Вывод становится доступен после выполнения 250 сделок на платформе.</div></details>
+        <details class="faq-item" data-reveal><summary>Какие призы считаются главными?</summary><div class="faq-body">Главные призы — 2 квартиры в столице вашей страны и 3 автомобиля BMW M5 CS. Денежные призы распределяются между следующими местами.</div></details>
+        <details class="faq-item" data-reveal><summary>Как начисляются очки?</summary><div class="faq-body">За каждую завершённую сделку начисляются очки. За серии сделок предусмотрены бонусные множители. Рейтинг обновляется в реальном времени.</div></details>
+        <details class="faq-item" data-reveal><summary>Можно ли участвовать из любой страны?</summary><div class="faq-body">Да, Aura Trade доступна для трейдеров по всему миру. Квартира разыгрывается в столице страны проживания победителя.</div></details>
+        <details class="faq-item" data-reveal><summary>Когда состоится розыгрыш?</summary><div class="faq-body">Дата финального розыгрыша будет объявлена дополнительно. Следите за обновлениями в личном кабинете.</div></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════════════ FINAL CTA ═══════════════════ -->
+  <section class="final-cta" id="cta">
+    <div class="container">
+      <div class="final-cta-inner glass" data-reveal>
+        <div class="final-cta-glow"></div>
+        <h2>Запускайте торговлю<br />сейчас</h2>
+        <p>Боритесь за 2 квартиры, BMW&nbsp;M5&nbsp;CS и денежные призы на Aura Trade.</p>
+        <div class="hero-cta"><a href="#" class="btn-gold">Открыть аккаунт</a><a href="#" class="btn-glass">Таблица лидеров</a></div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span class="footer-logo"><img src="assets/images/logo.png" alt="" class="footer-logo-img" /> Aura Trade</span>
+      <span class="footer-copy">© 2026 Aura Trade. Все права защищены.</span>
+      <div class="footer-links"><a href="#">Условия</a><a href="#">Политика</a><a href="#">Контакты</a></div>
+    </div>
+  </footer>
+
+  <!-- Three.js r134 — local file, no CDN/CORS issues -->
+  <script src="js/three.min.js"></script>
+  <script src="js/bmw-image-data.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+  <script src="js/animations.js"></script>
+</body>
+</html>

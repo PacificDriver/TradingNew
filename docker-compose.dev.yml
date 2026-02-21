@@ -1,0 +1,28 @@
+# Режим разработки: монтируем исходники, изменения подхватываются без перезапуска.
+# Запуск: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# После добавления новых маршрутов в backend: перезапустите backend или пересоберите:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build backend
+
+services:
+  backend:
+    command: npm run dev
+    volumes:
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    command: ["npx", "next", "dev", "-H", "0.0.0.0"]
+    volumes:
+      - ./frontend/app:/app/app
+      - ./frontend/components:/app/components
+      - ./frontend/store:/app/store
+      - ./frontend/lib:/app/lib
+      - ./frontend/next.config.mjs:/app/next.config.mjs
+      - ./frontend/tailwind.config.ts:/app/tailwind.config.ts
+      - ./frontend/postcss.config.mjs:/app/postcss.config.mjs
+      - ./frontend/tsconfig.json:/app/tsconfig.json
+      - ./frontend/next-env.d.ts:/app/next-env.d.ts
+      - ./frontend/package.json:/app/package.json

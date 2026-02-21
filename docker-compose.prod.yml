@@ -1,0 +1,51 @@
+# Production: миграции выполняются при старте backend.
+# В корне создайте .env с JWT_SECRET, NEXT_PUBLIC_API_BASE_URL, NEXT_PUBLIC_WS_URL.
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mvp_user
+      POSTGRES_PASSWORD: mvp_password
+      POSTGRES_DB: mvp_trading
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mvp_user -d mvp_trading"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://mvp_user:mvp_password@postgres:5432/mvp_trading?schema=public
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      PORT: 4000
+    env_file: ./backend/.env
+    ports:
+      - "4000:4000"
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run start"]
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:4000}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:4000}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:4000}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:4000}
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
