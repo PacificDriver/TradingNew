@@ -84,7 +84,7 @@ export function AppHeader() {
       {/* Слева: логотип + навигация (в стиле Bybit — без бейджей) */}
       <div className="flex items-center gap-6 md:gap-8 shrink-0">
         <Link
-          href="/"
+          href="/login"
           className="flex items-center gap-2 shrink-0 rounded-lg overflow-hidden transition-opacity hover:opacity-90"
         >
           <ChartLogo className="h-9 w-9" />

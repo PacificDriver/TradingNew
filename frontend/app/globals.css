@@ -252,6 +252,7 @@ body {
   /* GPU-слой для плавной анимации (только transform/opacity) */
   transform: translateZ(0);
   backface-visibility: hidden;
+  will-change: transform;
 }
 
 /* Центр — белый, к краям — цветной градиент. Кольцо 1: янтарный */

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useTradingStore } from "../store/useTradingStore";
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:4000";
+const WS_URL = "wss://bdauratrade.ngrok.app";
 
 /**
  * Small client-only component that maintains a single WebSocket connection

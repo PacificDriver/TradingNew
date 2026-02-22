@@ -35,15 +35,15 @@ export default function LoginPage() {
     try {
       const body: { email: string; password: string; totpCode?: string } = { email, password };
       if (requiresTotp) body.totpCode = totpToken.replace(/\s/g, "");
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000"}/auth/login`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body)
-        }
-      );
+      const apiBase = "/api-proxy";
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (apiBase.includes("ngrok")) headers["ngrok-skip-browser-warning"] = "1";
+      const res = await fetch(`${apiBase}/auth/login`, {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: JSON.stringify(body)
+      });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setAuth(data.token ?? null, data.user);

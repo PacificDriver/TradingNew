@@ -30,7 +30,7 @@ Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendCmd
 Start-Sleep -Seconds 2
 
 # Frontend в новом окне
-$frontendCmd = "Set-Location '$root\frontend'; `$env:NEXT_PUBLIC_API_BASE_URL='http://localhost:4000'; `$env:NEXT_PUBLIC_WS_URL='ws://localhost:4000'; npm run dev"
+$frontendCmd = "Set-Location '$root\frontend'; `$env:NEXT_PUBLIC_API_BASE_URL='https://wetwetwetwetwe.ngrok.app'; `$env:NEXT_PUBLIC_WS_URL='wss://wetwetwetwetwe.ngrok.app'; npm run dev"
 Start-Process powershell -ArgumentList "-NoExit", "-Command", $frontendCmd
 
-Write-Host "Backend и Frontend запущены в отдельных окнах. Frontend: http://localhost:3000  Backend: http://localhost:4000" -ForegroundColor Green
+Write-Host "Backend and Frontend started. Frontend: http://localhost:3000  Backend: http://localhost:4000" -ForegroundColor Green

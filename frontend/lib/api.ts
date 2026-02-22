@@ -1,5 +1,4 @@
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+const API_BASE = "/api-proxy";
 
 export function authHeaders(token?: string | null): Record<string, string> {
   const headers: Record<string, string> = {
@@ -19,11 +18,16 @@ export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const headers = new Headers((options.headers as Record<string, string>) ?? {});
+  if (API_BASE.includes("ngrok") || API_BASE === "/api-proxy") {
+    headers.set("ngrok-skip-browser-warning", "1");
+  }
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
+      ...options,
       credentials: "include",
-      ...options
+      headers: Object.fromEntries(headers)
     });
   } catch (e) {
     const err = new Error("Сервер недоступен") as ApiError;

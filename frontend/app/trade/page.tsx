@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGuard } from "../../components/AuthGuard";
 import { WebSocketBridge } from "../../components/WebSocketBridge";
@@ -265,6 +265,10 @@ function TradePageContent() {
     };
   }, [authChecked, token, selectedPairId, timeframe, candleLimitFor5h]);
 
+  // Throttle: обновляем график по тикам не чаще чем раз в 120ms (меньше лишних ре-рендеров)
+  const lastCandleUpdateRef = useRef<number>(0);
+  const throttleMs = 120;
+
   // Live update графика: доклеиваем текущий тик цены в последнюю свечу/создаём новую свечу
   useEffect(() => {
     if (selectedPairId == null) return;
@@ -279,38 +283,50 @@ function TradePageContent() {
     const tickPrice = Number(lastTick.price);
     if (!Number.isFinite(tickPrice)) return;
 
-    setCandles((prev) => {
-      if (!prev.length) return prev;
-      const next = [...prev];
-      const last = next[next.length - 1];
+    const now = Date.now();
+    const elapsed = now - lastCandleUpdateRef.current;
+    const runUpdate = () => {
+      lastCandleUpdateRef.current = Date.now();
+      setCandles((prev) => {
+        if (!prev.length) return prev;
+        const next = [...prev];
+        const last = next[next.length - 1];
 
-      if (bucketStart > last.startTime) {
-        const open = Number(last.close);
-        const close = tickPrice;
-        next.push({
-          startTime: bucketStart,
-          open,
-          high: Math.max(open, close),
-          low: Math.min(open, close),
-          close
-        });
-        const maxCandles = candleLimitFor5h[timeframe] ?? 200;
-        return next.slice(-maxCandles);
-      }
+        if (bucketStart > last.startTime) {
+          const open = Number(last.close);
+          const close = tickPrice;
+          next.push({
+            startTime: bucketStart,
+            open,
+            high: Math.max(open, close),
+            low: Math.min(open, close),
+            close
+          });
+          const maxCandles = candleLimitFor5h[timeframe] ?? 200;
+          return next.slice(-maxCandles);
+        }
 
-      if (bucketStart === last.startTime) {
-        const updated = {
-          ...last,
-          high: Math.max(Number(last.high), tickPrice),
-          low: Math.min(Number(last.low), tickPrice),
-          close: tickPrice
-        };
-        next[next.length - 1] = updated;
-        return next;
-      }
+        if (bucketStart === last.startTime) {
+          const updated = {
+            ...last,
+            high: Math.max(Number(last.high), tickPrice),
+            low: Math.min(Number(last.low), tickPrice),
+            close: tickPrice
+          };
+          next[next.length - 1] = updated;
+          return next;
+        }
 
-      return prev;
-    });
+        return prev;
+      });
+    };
+
+    if (elapsed >= throttleMs) {
+      runUpdate();
+    } else {
+      const t = setTimeout(runUpdate, throttleMs - elapsed);
+      return () => clearTimeout(t);
+    }
   }, [selectedPairId, prices, timeframe, timeframeToMs, candleLimitFor5h]);
 
   const markers = useMemo(() => {

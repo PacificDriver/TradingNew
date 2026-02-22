@@ -31,16 +31,26 @@ function generateReferralCode(): string {
 
 const PORT = Number(process.env.PORT) || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretjwtkey";
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3000,http://localhost:3001";
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3000,http://localhost:3001,https://36b7-89-110-80-238.ngrok-free.app";
 const CORS_ORIGINS = FRONTEND_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean);
 const SESSION_COOKIE_NAME = "bo_session";
 const IS_PROD = process.env.NODE_ENV === "production";
 const BACKEND_PUBLIC_URL = (process.env.BACKEND_PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/$/, "");
+// ngrok/development: allow any origin to avoid CORS issues
+const CORS_ALLOW_ANY = process.env.CORS_ALLOW_ANY === "1" || !!process.env.BACKEND_PUBLIC_URL?.includes("ngrok");
 
 app.use(
   cors({
-    origin: CORS_ORIGINS.length > 1 ? CORS_ORIGINS : CORS_ORIGINS[0] || true,
-    credentials: true
+    origin: CORS_ALLOW_ANY
+      ? (origin: string | undefined, cb: (err: Error | null, allow?: boolean | string) => void) =>
+          cb(null, origin || "http://localhost:3000")
+      : CORS_ORIGINS.length > 1
+        ? CORS_ORIGINS
+        : CORS_ORIGINS[0] || true,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept", "ngrok-skip-browser-warning"],
+    exposedHeaders: ["Content-Type"]
   })
 );
 app.use(express.json());

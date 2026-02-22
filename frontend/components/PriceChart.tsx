@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import {
   LineStyle,
   LineType,
@@ -106,7 +106,7 @@ const DARK_THEME = {
 /**
  * График на TradingView Lightweight Charts: свечи/линия, маркеры сделок, ценовые линии.
  */
-export function PriceChart({
+function PriceChartInner({
   candles,
   markers = [],
   mode = "candles",
@@ -535,3 +535,5 @@ export function PriceChart({
     </div>
   );
 }
+
+export const PriceChart = memo(PriceChartInner);
