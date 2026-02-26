@@ -1,11 +1,14 @@
 # Режим разработки: монтируем исходники, изменения подхватываются без перезапуска.
 # Запуск: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
-# После добавления новых маршрутов в backend: перезапустите backend или пересоберите:
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build backend
+# Реферальная программа: отдельный проект referral-site/ (http://localhost:3002)
+# После добавления новых маршрутов: перезапустите frontend:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml restart frontend
 
 services:
   backend:
     command: npm run dev
+    environment:
+      REFERRAL_FRONTEND_ORIGIN: http://localhost:3002
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
@@ -15,11 +18,16 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
     command: ["npx", "next", "dev", "-H", "0.0.0.0"]
+    environment:
+      BACKEND_URL: http://backend:4000
+      NEXT_PUBLIC_WS_URL: ws://localhost:4000
     volumes:
       - ./frontend/app:/app/app
       - ./frontend/components:/app/components
       - ./frontend/store:/app/store
       - ./frontend/lib:/app/lib
+      - ./frontend/public:/app/public
+      - ./frontend/middleware.ts:/app/middleware.ts
       - ./frontend/next.config.mjs:/app/next.config.mjs
       - ./frontend/tailwind.config.ts:/app/tailwind.config.ts
       - ./frontend/postcss.config.mjs:/app/postcss.config.mjs

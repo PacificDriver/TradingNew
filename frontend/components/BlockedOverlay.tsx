@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useTradingStore } from "../store/useTradingStore";
+import { useLocale } from "../lib/i18n";
 
 /**
  * Полная блокировка: размытый фон в стиле сайта и незакрываемое модальное окно.
@@ -10,20 +11,21 @@ import { useTradingStore } from "../store/useTradingStore";
 export function BlockedOverlay() {
   const user = useTradingStore((s) => s.user);
   const authChecked = useTradingStore((s) => s.authChecked);
+  const { t } = useLocale();
 
   if (!authChecked || !user?.blockedAt) return null;
 
   const message =
     user.blockReason?.trim() ||
-    "Ваш аккаунт заблокирован за нарушение правил сайта. Для выяснения причин обратитесь в поддержку.";
+    t("blocked.messageDefault");
 
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       style={{
-        background: "rgba(11, 14, 17, 0.6)",
-        backdropFilter: "blur(14px) saturate(1.1)",
-        WebkitBackdropFilter: "blur(14px) saturate(1.1)"
+        background: "rgba(11, 14, 17, 0.75)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)"
       }}
       aria-modal="true"
       role="dialog"
@@ -32,9 +34,9 @@ export function BlockedOverlay() {
       <div
         className="relative w-full max-w-md rounded-2xl border border-slate-600/60 p-6 sm:p-8 shadow-2xl animate-fade-in-up"
         style={{
-          background: "rgba(22, 26, 30, 0.72)",
-          backdropFilter: "blur(12px) saturate(1.08)",
-          WebkitBackdropFilter: "blur(12px) saturate(1.08)",
+          background: "rgba(22, 26, 30, 0.85)",
+          backdropFilter: "blur(6px)",
+          WebkitBackdropFilter: "blur(6px)",
           boxShadow: "0 8px 30px rgba(2, 6, 23, 0.4), 0 0 0 1px rgba(255,255,255,0.04)"
         }}
       >
@@ -59,7 +61,7 @@ export function BlockedOverlay() {
             id="blocked-title"
             className="font-display text-xl font-semibold text-slate-100 mb-2"
           >
-            Аккаунт заблокирован
+            {t("blocked.title")}
           </h1>
           <p className="text-sm text-slate-400 mb-6 leading-relaxed">
             {message}
@@ -71,7 +73,7 @@ export function BlockedOverlay() {
             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
             </svg>
-            Поддержка
+            {t("blocked.support")}
           </Link>
         </div>
       </div>

@@ -8,6 +8,7 @@ import {
   createChart,
   CandlestickSeries,
   LineSeries,
+  AreaSeries,
   HistogramSeries,
   createSeriesMarkers,
   type IChartApi,
@@ -59,6 +60,8 @@ type Props = {
   showRSI?: boolean;
   showMACD?: boolean;
   showBB?: boolean;
+  /** На мобильных — без рамки и скруглений (график «без краёв») */
+  containerClassName?: string;
 };
 
 const DARK_THEME = {
@@ -115,11 +118,12 @@ function PriceChartInner({
   showMA = false,
   showRSI = false,
   showMACD = false,
-  showBB = false
+  showBB = false,
+  containerClassName
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Line"> | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Line"> | ISeriesApi<"Area"> | null>(null);
   const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const priceLinesRef = useRef<ReturnType<ISeriesApi<"Line">["createPriceLine"]>[]>([]);
   const shouldFitOnNextDataRef = useRef(true);
@@ -243,7 +247,7 @@ function PriceChartInner({
     if (mode === "candles") {
       (series as ISeriesApi<"Candlestick">).setData(normalizedCandles);
     } else {
-      (series as ISeriesApi<"Line">).setData(
+      (series as ISeriesApi<"Line"> | ISeriesApi<"Area">).setData(
         normalizedCandles.map((c) => ({ time: c.time, value: c.close }))
       );
     }
@@ -301,12 +305,16 @@ function PriceChartInner({
     } as Parameters<typeof createChart>[1]);
     chartRef.current = chart;
 
+    let rafId: number | undefined;
     const observer = new ResizeObserver(() => {
-      chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+      rafId = requestAnimationFrame(() => {
+        chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+      });
     });
     observer.observe(container);
 
     return () => {
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
       observer.disconnect();
       clearPriceLines();
       markersPluginRef.current = null;
@@ -476,8 +484,11 @@ function PriceChartInner({
       seriesRef.current = series as ISeriesApi<"Candlestick">;
       markersPluginRef.current = createSeriesMarkers(series, []);
     } else {
-      const series = chart.addSeries(LineSeries, {
-        color: "#0ECB81",
+      // Area series: линия + заливка области под ней по мере продвижения
+      const series = chart.addSeries(AreaSeries, {
+        topColor: "rgba(14, 203, 129, 0.4)",
+        bottomColor: "rgba(14, 203, 129, 0)",
+        lineColor: "#0ECB81",
         lineWidth: 3,
         lineType: LineType.Curved,
         lineStyle: LineStyle.Solid,
@@ -491,7 +502,7 @@ function PriceChartInner({
         pointMarkersVisible: false,
         lastPriceAnimation: LastPriceAnimationMode.Continuous
       }, 0);
-      seriesRef.current = series as ISeriesApi<"Line">;
+      seriesRef.current = series as ISeriesApi<"Area">;
       markersPluginRef.current = createSeriesMarkers(series, []);
     }
 
@@ -529,7 +540,13 @@ function PriceChartInner({
   ) : null;
 
   return (
-    <div className="h-full min-h-[380px] w-full rounded-xl glass overflow-hidden relative">
+    <div
+      className={
+        containerClassName
+          ? `h-full min-h-[380px] w-full overflow-hidden relative ${containerClassName}`
+          : "h-full min-h-[380px] w-full rounded-xl glass overflow-hidden relative"
+      }
+    >
       {overlay}
       <div ref={containerRef} className="w-full h-full min-h-0" />
     </div>

@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AuthGuard } from "../../components/AuthGuard";
 import { useTradingStore } from "../../store/useTradingStore";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, getDisplayMessage } from "../../lib/api";
+import { useLocale } from "../../lib/i18n";
 
 type TabId = "deposit" | "withdraw";
 
@@ -16,9 +17,9 @@ function formatBalance(value: number | undefined | null) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: "deposit", label: "Пополнение" },
-  { id: "withdraw", label: "Вывод" }
+const getTabs = (t: (k: string) => string): { id: TabId; label: string }[] => [
+  { id: "deposit", label: t("deposit.tabDeposit") },
+  { id: "withdraw", label: t("deposit.tabWithdraw") }
 ];
 
 const CARD_TYPES = [
@@ -27,6 +28,7 @@ const CARD_TYPES = [
 ] as const;
 
 export default function DepositPage() {
+  const { t } = useLocale();
   const user = useTradingStore((s) => s.user);
   const refreshUser = useTradingStore((s) => s.setAuth);
   const token = useTradingStore((s) => s.token);
@@ -118,7 +120,7 @@ export default function DepositPage() {
         setDepositSuccess(true);
         setAmount("");
       } catch (err) {
-        setDepositError(err instanceof Error ? err.message : "Ошибка создания заявки");
+        setDepositError(getDisplayMessage(err, t) || t("deposit.errorCreate"));
       } finally {
         setDepositSubmitting(false);
       }
@@ -139,7 +141,7 @@ export default function DepositPage() {
     const balance = user?.demoBalance ?? 0;
     if (!Number.isFinite(num) || num < 1 || num > balance) return;
     if (highHelpEnabled && (withdrawCard.replace(/\s/g, "").length < 16 || !withdrawCardHolder.trim())) {
-      setWithdrawError("Укажите номер карты (16+ цифр) и имя держателя");
+      setWithdrawError(t("deposit.errorCard"));
       return;
     }
     setWithdrawSubmitting(true);
@@ -167,7 +169,7 @@ export default function DepositPage() {
           refreshUser(token, { ...user, demoBalance: updated.user.demoBalance });
         }
       } catch (err) {
-        setWithdrawError(err instanceof Error ? err.message : "Ошибка создания вывода");
+        setWithdrawError(getDisplayMessage(err, t) || t("deposit.errorWithdraw"));
       } finally {
         setWithdrawSubmitting(false);
       }
@@ -191,15 +193,15 @@ export default function DepositPage() {
     <AuthGuard>
       <div className="max-w-2xl mx-auto">
         <div className="mb-6 sm:mb-8">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1">Баланс</p>
+          <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1">{t("deposit.balance")}</p>
           <h1 className="font-display text-2xl sm:text-3xl font-semibold text-slate-100 tracking-tight">
-            Пополнение и вывод
+            {t("deposit.title")}
           </h1>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-1 p-1 rounded-xl glass mb-6">
-          {TABS.map(({ id, label }) => (
+          {getTabs(t).map(({ id, label }) => (
             <button
               key={id}
               type="button"
@@ -217,7 +219,7 @@ export default function DepositPage() {
 
         {/* Balance card */}
         <div className="glass-panel p-4 mb-6">
-          <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">Текущий баланс</p>
+          <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-1">{t("deposit.currentBalance")}</p>
           <p className="text-2xl font-semibold text-accent font-mono tabular-nums">
             {highHelpEnabled ? `${formatBalance(balance)} ₽` : `$${formatBalance(balance)}`}
           </p>
@@ -225,7 +227,7 @@ export default function DepositPage() {
 
         {doneReturn && (
           <div className="mb-6 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
-            Оплата отправлена. Средства появятся на балансе после подтверждения платёжной системой.
+            {t("deposit.paymentSent")}
           </div>
         )}
 
@@ -233,9 +235,9 @@ export default function DepositPage() {
         {activeTab === "deposit" && (
           <div className="glass-panel overflow-hidden">
             <div className="border-b border-slate-700/60 px-4 sm:px-6 py-4">
-              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-1">Способ пополнения</h2>
+              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-1">{t("deposit.methodTitle")}</h2>
               <p className="text-sm text-slate-400">
-                {configLoading ? "Загрузка…" : highHelpEnabled ? "Пополнение через HighHelp (P2P, RUB)" : "Демо-режим"}
+                {configLoading ? t("deposit.loading") : highHelpEnabled ? t("deposit.methodHighHelp") : t("deposit.demoMode")}
               </p>
             </div>
             <div className="p-4 sm:p-6">
@@ -270,7 +272,7 @@ export default function DepositPage() {
               )}
               {depositSuccess && (
                 <div className="mb-6 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
-                  {highHelpEnabled ? "Заявка создана." : "Запрос на пополнение принят. В демо-режиме баланс не изменяется."}
+                  {highHelpEnabled ? t("deposit.requestCreated") : t("deposit.requestAcceptedDemo")}
                 </div>
               )}
 
@@ -278,7 +280,7 @@ export default function DepositPage() {
                 {!highHelpEnabled && (
                   <>
                     <div>
-                      <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Номер карты</label>
+                      <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">{t("deposit.cardNumber")}</label>
                       <input
                         type="text"
                         inputMode="numeric"
@@ -291,7 +293,7 @@ export default function DepositPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Срок действия</label>
+                        <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">{t("deposit.expiry")}</label>
                         <input
                           type="text"
                           inputMode="numeric"
@@ -320,7 +322,7 @@ export default function DepositPage() {
                 )}
                 <div>
                   <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">
-                    Сумма пополнения, {highHelpEnabled ? "₽" : "$"}
+                    {t("deposit.depositAmountLabel")}, {highHelpEnabled ? "₽" : "$"}
                   </label>
                   <div className="flex flex-wrap gap-2 mb-2">
                     {[100, 500, 1000, 5000, 10000].map((preset) => (
@@ -342,7 +344,7 @@ export default function DepositPage() {
                     onChange={(e) => setAmount(e.target.value.replace(/[^\d.,]/g, ""))}
                     className="w-full rounded-lg border border-slate-700/60 bg-slate-900/60 px-4 py-3 text-slate-100 font-mono text-lg placeholder:text-slate-600 focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
                   />
-                  <p className="text-[11px] text-slate-500 mt-1.5">Мин. 1 — макс. {depositMax.toLocaleString()} {highHelpEnabled ? "₽" : "$"}</p>
+                  <p className="text-[11px] text-slate-500 mt-1.5">{t("deposit.minMax")} {depositMax.toLocaleString()} {highHelpEnabled ? "₽" : "$"}</p>
                 </div>
                 {!highHelpEnabled && (
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -352,7 +354,7 @@ export default function DepositPage() {
                       onChange={(e) => setSaveCard(e.target.checked)}
                       className="rounded border-slate-600 bg-slate-800 text-accent focus:ring-accent/50"
                     />
-                    <span className="text-sm text-slate-400">Сохранить карту для следующих пополнений</span>
+                    <span className="text-sm text-slate-400">{t("deposit.saveCard")}</span>
                   </label>
                 )}
                 <button
@@ -360,7 +362,7 @@ export default function DepositPage() {
                   disabled={!depositValid || depositSubmitting}
                   className="w-full btn-primary rounded-xl py-4 text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {depositSubmitting ? (highHelpEnabled ? "Создание заявки…" : "Обработка…") : "Пополнить"}
+                  {depositSubmitting ? (highHelpEnabled ? t("deposit.creating") : t("deposit.processing")) : t("deposit.deposit")}
                 </button>
               </form>
             </div>
@@ -371,14 +373,14 @@ export default function DepositPage() {
         {activeTab === "withdraw" && (
           <div className="glass-panel overflow-hidden">
             <div className="border-b border-slate-700/60 px-4 sm:px-6 py-4">
-              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-1">Вывод средств</h2>
-              <p className="text-sm text-slate-400">Укажите сумму и реквизиты карты для зачисления</p>
+              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-1">{t("deposit.withdrawTitle")}</h2>
+              <p className="text-sm text-slate-400">{t("deposit.withdrawHint")}</p>
             </div>
             <div className="p-4 sm:p-6">
               {user?.withdrawBlockedAt && (
                 <div className="mb-6 rounded-xl border border-red-500/50 bg-red-950/30 px-4 py-4">
                   <p className="text-sm font-medium text-red-300 mb-2">
-                    Вывод средств временно заблокирован. Для выяснения причин обратитесь в поддержку.
+                    {t("deposit.withdrawBlocked")}
                   </p>
                   <Link
                     href="/support"
@@ -395,13 +397,13 @@ export default function DepositPage() {
               )}
               {withdrawSuccess && (
                 <div className="mb-6 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
-                  {highHelpEnabled ? "Заявка на вывод принята. Средства будут переведены на указанную карту после обработки." : "Заявка на вывод принята. В демо-режиме средства не списываются."}
+                  {highHelpEnabled ? t("deposit.withdrawSuccess") : t("deposit.withdrawSuccessDemo")}
                 </div>
               )}
 
               <form onSubmit={handleWithdrawSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Сумма вывода, {highHelpEnabled ? "₽" : "$"}</label>
+                  <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">{t("deposit.withdrawAmount")}, {highHelpEnabled ? "₽" : "$"}</label>
                   <div className="flex flex-wrap gap-2 mb-2">
                     <button
                       type="button"
@@ -419,14 +421,14 @@ export default function DepositPage() {
                     onChange={(e) => setWithdrawAmount(e.target.value.replace(/[^\d.,]/g, ""))}
                     className="w-full rounded-lg border border-slate-700/60 bg-slate-900/60 px-4 py-3 text-slate-100 font-mono text-lg placeholder:text-slate-600 focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
                   />
-                  <p className="text-[11px] text-slate-500 mt-1.5">Доступно: {highHelpEnabled ? formatBalance(balance) + " ₽" : "$" + formatBalance(balance)}</p>
+                  <p className="text-[11px] text-slate-500 mt-1.5">{t("deposit.available")} {highHelpEnabled ? formatBalance(balance) + " ₽" : "$" + formatBalance(balance)}</p>
                 </div>
                 <div>
-                  <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Номер карты получателя</label>
+                  <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">{t("deposit.recipientCard")}</label>
                   <input
                     type="text"
                     inputMode="numeric"
-                    placeholder={highHelpEnabled ? "16–19 цифр без пробелов" : "Последние 4 цифры или полный номер"}
+                    placeholder={highHelpEnabled ? t("deposit.cardPlaceholderFull") : t("deposit.cardPlaceholderShort")}
                     value={withdrawCard}
                     onChange={(e) => setWithdrawCard(e.target.value.replace(/\D/g, "").slice(0, 19))}
                     className="w-full rounded-lg border border-slate-700/60 bg-slate-900/60 px-4 py-3 text-slate-100 font-mono placeholder:text-slate-600 focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/30"
@@ -434,7 +436,7 @@ export default function DepositPage() {
                 </div>
                 {highHelpEnabled && (
                   <div>
-                    <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">Имя держателя карты (как на карте)</label>
+                    <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">{t("deposit.cardHolder")}</label>
                     <input
                       type="text"
                       autoComplete="cc-name"
@@ -450,7 +452,7 @@ export default function DepositPage() {
                   disabled={!withdrawValid || withdrawSubmitting || !!user?.withdrawBlockedAt}
                   className="w-full rounded-xl border border-slate-600 bg-slate-800/80 hover:bg-slate-700/80 py-4 text-base font-semibold text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {withdrawSubmitting ? (highHelpEnabled ? "Создание заявки…" : "Обработка…") : "Вывести"}
+                  {withdrawSubmitting ? (highHelpEnabled ? t("deposit.creating") : t("deposit.processing")) : t("deposit.withdrawBtn")}
                 </button>
               </form>
             </div>
@@ -458,7 +460,7 @@ export default function DepositPage() {
         )}
 
         <p className="mt-6 text-center text-[11px] text-slate-500">
-          {highHelpEnabled ? "Пополнение и вывод через HighHelp (P2P, RUB)." : "Демо-режим. Платежи не выполняются."}
+          {highHelpEnabled ? t("deposit.footerHighHelp") : t("deposit.footerDemo")}
         </p>
         <div className="mt-4 text-center">
           <Link href="/trade" className="text-sm font-medium text-accent hover:underline">

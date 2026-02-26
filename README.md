@@ -1,10 +1,8 @@
-# Binary Options MVP (Demo Only)
+# Binary Options — платформа бинарных опционов
 
-Minimal MVP of a binary options trading platform.
+Торговая платформа бинарных опционов. Вся логика (баланс, цены, расчёт сделок) выполняется на бэкенде. Пополнение и вывод — через **HighHelp** (P2P, RUB). Документация HighHelp: [docs.highhelp.io](https://docs.highhelp.io/ru/ru/HEAD/index.html).
 
-> **Important:** This project is a **demo**.  
-> All balances are demo-only, and **all trading logic is executed on the backend**.  
-> The client is a pure UI that displays server state.
+> **Боевой режим:** для работы пополнения и вывода в `backend/.env` задайте `HIGHHELP_PROJECT_ID`, `HIGHHELP_PRIVATE_KEY_PEM` и `BACKEND_PUBLIC_URL`. Подробно см. **[PRODUCTION.md](./PRODUCTION.md)**.
 
 ## Tech Stack
 
@@ -89,10 +87,21 @@ Requirements:
 
 - Docker & Docker Compose
 
+**Обычный запуск** (образы собираются, код внутри образа):
+
 ```bash
-cd path/to/Trading
+cd path/to/TradingNew
 docker compose up --build
 ```
+
+**Режим разработки — изменения в коде видны без пересборки** (исходники монтируются с хоста). **Рекомендуется для Docker Desktop**, иначе правки в коде не попадут в контейнеры:
+
+```bash
+cd path/to/TradingNew
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+```
+
+После правок в коде: обновить страницу в браузере с полной перезагрузкой (**Ctrl+Shift+R**). Перезапуск контейнеров (например после git pull): та же команда `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d`.
 
 Services:
 

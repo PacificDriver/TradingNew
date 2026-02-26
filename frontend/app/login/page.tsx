@@ -1,10 +1,11 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { apiFetch, authHeaders } from "../../lib/api";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTradingStore } from "../../store/useTradingStore";
+import { useLocale } from "../../lib/i18n";
+import { getDisplayMessage } from "../../lib/api";
 
 type LoginResponse = {
   token?: string;
@@ -19,6 +20,7 @@ const inputClass = "mt-1.5 input-glass";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useLocale();
   const setAuth = useTradingStore((s) => s.setAuth);
   const setAuthChecked = useTradingStore((s) => s.setAuthChecked);
   const [email, setEmail] = useState("");
@@ -55,10 +57,10 @@ export default function LoginPage() {
         setRequiresTotp(true);
         setError(data.message === "TOTP code required" ? null : (data.message || null));
       } else {
-        setError(data.message || "Ошибка входа");
+        setError(data.message || t("auth.loginError"));
       }
     } catch (err) {
-      setError((err as Error).message);
+      setError(getDisplayMessage(err, t));
     } finally {
       setLoading(false);
     }
@@ -68,19 +70,19 @@ export default function LoginPage() {
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
       <div className="card w-full max-w-md p-6 sm:p-8 animate-fade-in-up stagger-1 opacity-0">
         <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1">
-          Демо‑платформа
+          {t("auth.demoPlatform")}
         </p>
         <h1 className="font-display text-2xl font-semibold text-slate-100 tracking-tight mb-2">
-          Вход
+          {t("auth.loginTitle")}
         </h1>
         <p className="text-sm text-slate-400 mb-6">
-          Все расчёты и торговая логика выполняются на бэкенде.
+          {t("auth.loginSubtitle")}
         </p>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-slate-500">
-              E‑mail
+              {t("auth.email")}
             </label>
             <input
               type="email"
@@ -93,7 +95,7 @@ export default function LoginPage() {
           </div>
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-slate-500">
-              Пароль
+              {t("auth.password")}
             </label>
             <input
               type="password"
@@ -114,15 +116,15 @@ export default function LoginPage() {
                   </svg>
                 </div>
                 <div>
-                  <h2 className="font-display text-base font-semibold text-slate-100">Подтверждение входа</h2>
-                  <p className="text-xs text-slate-400">Двухфакторная аутентификация включена</p>
+                  <h2 className="font-display text-base font-semibold text-slate-100">{t("auth.totpTitle")}</h2>
+                  <p className="text-xs text-slate-400">{t("auth.totpSubtitle")}</p>
                 </div>
               </div>
               <p className="text-sm text-slate-400 mb-3">
-                Введите 6-значный код из приложения (Google Authenticator, Authy и т.п.)
+                {t("auth.totpPrompt")}
               </p>
               <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">
-                Код из приложения
+                {t("auth.totpLabel")}
               </label>
               <input
                 type="text"
@@ -147,25 +149,25 @@ export default function LoginPage() {
             className="btn-primary w-full py-3 mt-1 rounded-xl transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70"
             disabled={loading}
           >
-            {loading ? (requiresTotp ? "Проверка…" : "Входим…") : "Войти"}
+            {loading ? (requiresTotp ? t("auth.checkingTotp") : t("auth.loggingIn")) : t("auth.login")}
           </button>
         </form>
 
         <div className="mt-6 pt-5 border-t border-white/5">
           <p className="text-sm text-slate-500 text-center">
-            Нет аккаунта?{" "}
+            {t("auth.noAccount")}{" "}
             <Link
               href="/register"
               className="text-accent font-medium hover:text-emerald-400 transition-colors"
             >
-              Создать демо‑аккаунт
+              {t("auth.createDemoAccount")}
             </Link>
           </p>
           <Link
             href="/"
             className="mt-3 block text-center text-xs text-slate-500 hover:text-slate-400 transition-colors"
           >
-            ← На главную
+            {t("auth.backHome")}
           </Link>
         </div>
       </div>

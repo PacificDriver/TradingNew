@@ -134,7 +134,20 @@ export const useTradingStore = create<State & Actions>()(
           completedTrades: [],
           tradeHistory: []
         }),
-      setPairs: (pairs) => set({ pairs }),
+      setPairs: (pairs) =>
+        set((state) => {
+          const now = Date.now();
+          const nextPrices = { ...state.prices };
+          for (const p of pairs) {
+            const cur = state.prices[p.id];
+            const price = Number(p.currentPrice);
+            if (!Number.isFinite(price)) continue;
+            if (!cur?.length) {
+              nextPrices[p.id] = [{ ts: now, price }];
+            }
+          }
+          return { pairs, prices: nextPrices };
+        }),
       setChartSettings: (settings) =>
         set((state) => ({
           chartSettings: { ...state.chartSettings, ...settings }

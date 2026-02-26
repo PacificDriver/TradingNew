@@ -4,7 +4,8 @@ import { FormEvent, useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTradingStore } from "../../store/useTradingStore";
-import { apiFetch, authHeaders } from "../../lib/api";
+import { apiFetch, authHeaders, getDisplayMessage } from "../../lib/api";
+import { useLocale } from "../../lib/i18n";
 
 type RegisterResponse = {
   token?: string;
@@ -20,19 +21,27 @@ const inputClass = "mt-1.5 input-glass";
 export default function RegisterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const refCode = searchParams.get("ref")?.trim() || undefined;
+  const refFromUrl = searchParams.get("ref")?.trim() || undefined;
+  const { t } = useLocale();
   const setAuth = useTradingStore((s) => s.setAuth);
   const setAuthChecked = useTradingStore((s) => s.setAuthChecked);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [referralCode, setReferralCode] = useState(refFromUrl ?? "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const refCode = refFromUrl || (referralCode?.trim() || undefined);
+
   useEffect(() => {
-    if (refCode) {
-      apiFetch(`/ref/click?code=${encodeURIComponent(refCode)}`, { method: "GET" }).catch(() => {});
+    if (refFromUrl) {
+      apiFetch(`/ref/click?code=${encodeURIComponent(refFromUrl)}`, { method: "GET" }).catch(() => {});
     }
-  }, [refCode]);
+  }, [refFromUrl]);
+
+  useEffect(() => {
+    if (refFromUrl) setReferralCode(refFromUrl);
+  }, [refFromUrl]);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -48,7 +57,7 @@ export default function RegisterPage() {
       setAuthChecked(true);
       router.push("/trade");
     } catch (err) {
-      setError((err as Error).message);
+      setError(getDisplayMessage(err, t));
     } finally {
       setLoading(false);
     }
@@ -58,16 +67,16 @@ export default function RegisterPage() {
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
       <div className="card w-full max-w-md p-6 sm:p-8 animate-fade-in-up stagger-1 opacity-0">
         <p className="text-[11px] uppercase tracking-[0.2em] text-slate-500 mb-1">
-          Демо‑платформа
+          {t("auth.demoPlatform")}
         </p>
         <h1 className="font-display text-2xl font-semibold text-slate-100 tracking-tight mb-2">
-          Создать демо‑аккаунт
+          {t("auth.createDemoAccount")}
         </h1>
         <p className="text-sm text-slate-400 mb-6">
-          После регистрации вы получите стартовый демо‑баланс.
+          {t("auth.registerSubtitle")}
           {refCode && (
             <span className="block mt-2 text-emerald-400/90 text-sm">
-              Регистрация по реферальной ссылке
+              {t("auth.registerByReferral")}
             </span>
           )}
         </p>
@@ -75,7 +84,7 @@ export default function RegisterPage() {
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-slate-500">
-              E‑mail
+              {t("auth.email")}
             </label>
             <input
               type="email"
@@ -88,7 +97,7 @@ export default function RegisterPage() {
           </div>
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-slate-500">
-              Пароль
+              {t("auth.password")}
             </label>
             <input
               type="password"
@@ -98,6 +107,20 @@ export default function RegisterPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] uppercase tracking-wider text-slate-500">
+              {t("auth.referralCode")}
+            </label>
+            <input
+              type="text"
+              className={`${inputClass} ${refFromUrl ? "bg-slate-800/50 cursor-default" : ""}`}
+              placeholder={t("auth.referralCodePlaceholder")}
+              value={referralCode}
+              onChange={(e) => setReferralCode(e.target.value)}
+              readOnly={!!refFromUrl}
+              autoComplete="off"
             />
           </div>
           {error && (
@@ -110,25 +133,25 @@ export default function RegisterPage() {
             className="btn-primary w-full py-3 mt-1 rounded-xl transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70"
             disabled={loading}
           >
-            {loading ? "Создаём…" : "Создать аккаунт"}
+            {loading ? t("auth.creating") : t("auth.createAccount")}
           </button>
         </form>
 
         <div className="mt-6 pt-5 border-t border-white/5">
           <p className="text-sm text-slate-500 text-center">
-            Уже есть аккаунт?{" "}
+            {t("auth.haveAccount")}{" "}
             <Link
               href="/login"
               className="text-accent font-medium hover:text-emerald-400 transition-colors"
             >
-              Войти
+              {t("auth.loginLink")}
             </Link>
           </p>
           <Link
             href="/"
             className="mt-3 block text-center text-xs text-slate-500 hover:text-slate-400 transition-colors"
           >
-            ← На главную
+            {t("auth.backHome")}
           </Link>
         </div>
       </div>

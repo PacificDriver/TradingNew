@@ -7,19 +7,56 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model ReferralPartner {
+  id              Int                 @id @default(autoincrement())
+  email           String              @unique
+  password        String
+  name            String?
+  referralCode    String              @unique
+  referralClicks  Int                 @default(0)
+  referralBalance Decimal            @default(0)
+  cpaAmount       Decimal?            // фикс. награда за FTD (опционально)
+  referred        User[]              @relation("ReferralPartnerRelation")
+  clickEvents     ReferralClickEvent[]
+  cpaPayments     ReferralCpaPayment[]
+  createdAt       DateTime            @default(now())
+}
+
+model ReferralCpaPayment {
+  id        Int             @id @default(autoincrement())
+  partnerId Int
+  partner   ReferralPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  userId    Int
+  amount    Decimal
+  createdAt DateTime        @default(now())
+  @@index([partnerId, createdAt])
+}
+
+model ReferralClickEvent {
+  id        Int             @id @default(autoincrement())
+  partnerId Int
+  partner   ReferralPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  ipHash    String?         // хэш IP для unique clicks
+  createdAt DateTime        @default(now())
+  @@index([partnerId, createdAt])
+  @@index([partnerId, ipHash, createdAt])
+}
+
 model User {
-  id               Int      @id @default(autoincrement())
-  email            String   @unique
-  name             String?
-  password         String
-  demoBalance      Decimal  @default(1000.00)
-  isAdmin          Boolean  @default(false)
-  referralCode     String?  @unique
-  referrerId       Int?
-  referrer         User?    @relation("ReferralRelation", fields: [referrerId], references: [id])
-  referred         User[]   @relation("ReferralRelation")
-  referralBalance  Decimal  @default(0)
-  referralClicks   Int      @default(0)
+  id                 Int             @id @default(autoincrement())
+  email              String          @unique
+  name               String?
+  password           String
+  demoBalance        Decimal         @default(0)     // стартовый баланс при регистрации
+  isAdmin            Boolean         @default(false)
+  referralCode       String?         @unique
+  referrerId         Int?
+  referrer           User?           @relation("ReferralRelation", fields: [referrerId], references: [id])
+  referred           User[]          @relation("ReferralRelation")
+  referralPartnerId  Int?
+  referralPartner    ReferralPartner? @relation("ReferralPartnerRelation", fields: [referralPartnerId], references: [id])
+  referralBalance   Decimal         @default(0)
+  referralClicks     Int             @default(0)
   totpSecret         String?
   totpEnabled        Boolean  @default(false)
   blockedAt          DateTime?  // полная блокировка: торги и вывод запрещены
@@ -135,11 +172,34 @@ model PaymentTransaction {
   @@unique([paymentId])
   @@index([userId])
   @@index([status])
+  @@index([createdAt])
+  @@index([type, status])
 }
 
 // Защита от повторной обработки колбеков HighHelp
 model ProcessedCallback {
   idempotencyKey String   @id // project_id:payment_id:status:sub_status
   createdAt       DateTime @default(now())
+}
+
+// Настройки приложения (ключ-значение)
+model AppSetting {
+  key   String @id
+  value String @db.Text
+}
+
+// Аудит изменений баланса: каждая операция (сделка, пополнение, вывод, реферальный перевод)
+model BalanceAuditLog {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  type          String   // trade_open | trade_win | deposit | withdraw | withdraw_refund | referral_transfer
+  amount        Decimal  // delta: отрицательное = списание, положительное = зачисление
+  balanceBefore Decimal
+  balanceAfter  Decimal
+  refType       String?  // trade | payment | referral
+  refId         String?
+  createdAt     DateTime @default(now())
+  @@index([userId])
+  @@index([createdAt])
 }
 

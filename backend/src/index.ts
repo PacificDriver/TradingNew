@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -12,8 +13,10 @@ import type { Server } from "http";
 import {
   createPayin,
   createPayout,
-  isHighHelpConfigured
+  isHighHelpConfigured,
+  verifyWebhookPayload
 } from "./highhelp";
+import { notifyBalanceChange } from "./telegram";
 
 dotenv.config();
 
@@ -29,14 +32,30 @@ function generateReferralCode(): string {
   return code;
 }
 
+function generatePartnerReferralCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "A";
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
 const PORT = Number(process.env.PORT) || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretjwtkey";
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3000,http://localhost:3001,https://36b7-89-110-80-238.ngrok-free.app";
-const CORS_ORIGINS = FRONTEND_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean);
+// Локальная разработка и прод: localhost + https://aurabotrade.com (при необходимости добавьте ngrok и др. через FRONTEND_ORIGIN в .env)
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3000,http://localhost:3001,https://aurabotrade.com";
+// Реферальная программа на отдельном домене (для CORS)
+const REFERRAL_ORIGIN = process.env.REFERRAL_FRONTEND_ORIGIN || "";
+const CORS_ORIGINS = [
+  ...FRONTEND_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean),
+  ...REFERRAL_ORIGIN.split(",").map((o) => o.trim()).filter(Boolean)
+].filter(Boolean);
 const SESSION_COOKIE_NAME = "bo_session";
+const REFERRAL_PARTNER_COOKIE = "rp_session";
 const IS_PROD = process.env.NODE_ENV === "production";
 const BACKEND_PUBLIC_URL = (process.env.BACKEND_PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/$/, "");
-// ngrok/development: allow any origin to avoid CORS issues
+// Разрешить любой origin только если явно включено (CORS_ALLOW_ANY=1) или при ngrok
 const CORS_ALLOW_ANY = process.env.CORS_ALLOW_ANY === "1" || !!process.env.BACKEND_PUBLIC_URL?.includes("ngrok");
 
 app.use(
@@ -52,6 +71,13 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization", "Accept", "ngrok-skip-browser-warning"],
     exposedHeaders: ["Content-Type"]
   })
+);
+
+// Колбек HighHelp: обрабатываем с raw body для проверки подписи, до express.json()
+app.post(
+  "/payments/webhook",
+  express.raw({ type: "application/json" }),
+  paymentsWebhookHandler
 );
 app.use(express.json());
 
@@ -79,6 +105,15 @@ function getRequestToken(req: express.Request): string | null {
   return parseCookieValue(req.headers.cookie, SESSION_COOKIE_NAME);
 }
 
+function getPartnerToken(req: express.Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.substring("Bearer ".length);
+  }
+  return parseCookieValue(req.headers.cookie, REFERRAL_PARTNER_COOKIE)
+    || parseCookieValue(req.headers.cookie, SESSION_COOKIE_NAME);
+}
+
 function setAuthCookie(res: express.Response, token: string) {
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
@@ -93,6 +128,92 @@ function clearAuthCookie(res: express.Response) {
     httpOnly: true,
     sameSite: "lax",
     secure: IS_PROD
+  });
+}
+
+function setPartnerAuthCookie(res: express.Response, token: string) {
+  res.cookie(REFERRAL_PARTNER_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: IS_PROD,
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+}
+
+function clearPartnerAuthCookie(res: express.Response) {
+  res.clearCookie(REFERRAL_PARTNER_COOKIE, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: IS_PROD
+  });
+}
+
+function partnerAuthMiddleware(
+  req: AuthRequest,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  const token = getPartnerToken(req);
+  if (!token) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  try {
+    const payload = jwt.verify(token, JWT_SECRET) as { referralPartnerId?: number };
+    if (payload.referralPartnerId == null) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+    req.referralPartnerId = payload.referralPartnerId;
+    next();
+  } catch {
+    return res.status(401).json({ message: "Invalid token" });
+  }
+}
+
+// --- Rate limiting: in-memory по IP и userId (для мультиинстанса — использовать Redis) ---
+const rateLimitStore = new Map<string, number[]>();
+const RATE_WINDOW_MS = 60_000;
+
+function rateLimitMiddleware(options: { windowMs: number; max: number }) {
+  const { windowMs, max } = options;
+  return (req: AuthRequest, res: express.Response, next: express.NextFunction) => {
+    const ip = getClientIp(req) ?? "unknown";
+    const key = req.userId != null ? `user:${req.userId}` : `ip:${ip}`;
+    const now = Date.now();
+    let timestamps = rateLimitStore.get(key) ?? [];
+    timestamps = timestamps.filter((t) => now - t < windowMs);
+    if (timestamps.length >= max) {
+      return res.status(429).json({ message: "Слишком много запросов. Попробуйте позже." });
+    }
+    timestamps.push(now);
+    rateLimitStore.set(key, timestamps);
+    next();
+  };
+}
+
+// --- Аудит баланса: запись в BalanceAuditLog (из транзакции или после) ---
+function createBalanceAudit(
+  tx: unknown,
+  data: {
+    userId: number;
+    type: string;
+    amount: number;
+    balanceBefore: number;
+    balanceAfter: number;
+    refType?: string;
+    refId?: string;
+  }
+) {
+  const client = tx as { balanceAuditLog: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> } };
+  return client.balanceAuditLog.create({
+    data: {
+      userId: data.userId,
+      type: data.type,
+      amount: data.amount,
+      balanceBefore: data.balanceBefore,
+      balanceAfter: data.balanceAfter,
+      refType: data.refType ?? null,
+      refId: data.refId ?? null
+    }
   });
 }
 
@@ -130,6 +251,7 @@ async function createSessionForUser(
 interface AuthRequest extends express.Request {
   userId?: number;
   sessionId?: number;
+  referralPartnerId?: number;
 }
 
 function authMiddleware(
@@ -200,6 +322,25 @@ async function adminMiddleware(
     return res.status(403).json({ message: "Admin only" });
   }
   next();
+}
+
+async function getAppSetting(key: string): Promise<string | null> {
+  const row = await prisma.appSetting.findUnique({
+    where: { key },
+    select: { value: true }
+  });
+  return row?.value ?? null;
+}
+
+async function getReferralWithdrawConfig(): Promise<{ viaManager: boolean; managerTelegram: string }> {
+  const [viaManager, managerTelegram] = await Promise.all([
+    getAppSetting("referral_withdraw_via_manager"),
+    getAppSetting("referral_manager_telegram")
+  ]);
+  return {
+    viaManager: viaManager === "true" || viaManager === "1",
+    managerTelegram: managerTelegram?.trim() || ""
+  };
 }
 
 /** Запрещает доступ полностью заблокированным пользователям (кроме /me и поддержки) */
@@ -330,20 +471,41 @@ const POPULAR_TRADING_PAIRS: { symbol: string; name: string; currentPrice: numbe
 
 // --- Real prices from Binance (как на TradingView) ---
 const BINANCE_TICKER_URL = "https://api.binance.com/api/v3/ticker/price";
+const BINANCE_FETCH_TIMEOUT_MS = 12_000;
+const BINANCE_RETRIES = 3;
+const BINANCE_RETRY_DELAY_MS = 1000;
+/** Логируем ошибку Binance не чаще раза в 5 минут, чтобы не засорять консоль в Docker при сетевых сбоях */
+let lastBinanceErrorLog = 0;
+const BINANCE_ERROR_LOG_INTERVAL_MS = 5 * 60 * 1000;
 
 async function fetchBinancePrices(): Promise<Map<string, number>> {
   const map = new Map<string, number>();
-  try {
-    const res = await fetch(BINANCE_TICKER_URL);
-    if (!res.ok) return map;
-    const data = (await res.json()) as Array<{ symbol: string; price: string }>;
-    for (const item of data) {
-      const price = parseFloat(item.price);
-      if (Number.isFinite(price) && price > 0) map.set(item.symbol, price);
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= BINANCE_RETRIES; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), BINANCE_FETCH_TIMEOUT_MS);
+      const res = await fetch(BINANCE_TICKER_URL, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!res.ok) return map;
+      const data = (await res.json()) as Array<{ symbol: string; price: string }>;
+      for (const item of data) {
+        const price = parseFloat(item.price);
+        if (Number.isFinite(price) && price > 0) map.set(item.symbol, price);
+      }
+      return map;
+    } catch (err) {
+      lastErr = err;
+      if (attempt < BINANCE_RETRIES) {
+        await new Promise((r) => setTimeout(r, BINANCE_RETRY_DELAY_MS));
+      }
     }
-  } catch (err) {
+  }
+  const now = Date.now();
+  if (now - lastBinanceErrorLog >= BINANCE_ERROR_LOG_INTERVAL_MS) {
+    lastBinanceErrorLog = now;
     // eslint-disable-next-line no-console
-    console.error("Binance fetch error", err);
+    console.error("Binance fetch failed after retries (prices from DB/cache):", lastErr);
   }
   return map;
 }
@@ -791,11 +953,16 @@ app.post("/auth/register", async (req, res) => {
   }
 
   let referrerId: number | undefined;
+  let referralPartnerId: number | undefined;
   if (referralCode && typeof referralCode === "string" && referralCode.trim()) {
-    const referrer = await prisma.user.findUnique({
-      where: { referralCode: referralCode.trim() }
-    });
-    if (referrer) referrerId = referrer.id;
+    const code = referralCode.trim();
+    const partner = await prisma.referralPartner.findUnique({ where: { referralCode: code } });
+    if (partner) {
+      referralPartnerId = partner.id;
+    } else {
+      const referrer = await prisma.user.findUnique({ where: { referralCode: code } });
+      if (referrer) referrerId = referrer.id;
+    }
   }
 
   const hash = await bcrypt.hash(password, 10);
@@ -803,7 +970,8 @@ app.post("/auth/register", async (req, res) => {
     data: {
       email,
       password: hash,
-      ...(referrerId != null && { referrerId })
+      ...(referrerId != null && { referrerId }),
+      ...(referralPartnerId != null && { referralPartnerId })
     }
   });
 
@@ -1272,60 +1440,836 @@ app.get("/referral", authMiddleware, requireNotBlockedMiddleware, async (req: Au
   });
 });
 
-// --- Public: count click on referral link (no auth) ---
+// --- Public: count click on referral link (no auth) — проверяет и User, и ReferralPartner ---
+function hashIp(ip: string | null): string | null {
+  if (!ip) return null;
+  return crypto.createHash("sha256").update(ip).digest("hex").slice(0, 32);
+}
+
 app.get("/ref/click", async (req, res) => {
   const code = (req.query.code as string)?.trim();
   if (!code) {
     return res.status(400).json({ message: "Missing code" });
   }
-  const updated = await prisma.user.updateMany({
+  const partner = await prisma.referralPartner.findUnique({ where: { referralCode: code } });
+  if (partner) {
+    const ip = getClientIp(req);
+    const ipHash = hashIp(ip);
+    await prisma.$transaction([
+      prisma.referralPartner.update({
+        where: { id: partner.id },
+        data: { referralClicks: { increment: 1 } }
+      }),
+      prisma.referralClickEvent.create({
+        data: { partnerId: partner.id, ipHash }
+      })
+    ]);
+    return res.json({ ok: true });
+  }
+  const userUpdated = await prisma.user.updateMany({
     where: { referralCode: code },
     data: { referralClicks: { increment: 1 } }
   });
-  if (updated.count === 0) {
+  if (userUpdated.count === 0) {
     return res.status(404).json({ message: "Invalid referral code" });
   }
   return res.json({ ok: true });
 });
 
 // --- Withdraw referral balance to demo balance ---
-app.post("/referral/withdraw", authMiddleware, requireNotBlockedMiddleware, async (req: AuthRequest, res) => {
+app.post(
+  "/referral/withdraw",
+  authMiddleware,
+  rateLimitMiddleware({ windowMs: RATE_WINDOW_MS, max: 10 }),
+  requireNotBlockedMiddleware,
+  async (req: AuthRequest, res) => {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId }
+    });
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+    if (user.blockedAt) {
+      return res.status(403).json({
+        code: "ACCOUNT_BLOCKED",
+        message: "Аккаунт заблокирован. Вывод недоступен."
+      });
+    }
+    if (user.withdrawBlockedAt) {
+      return res.status(403).json({
+        code: "WITHDRAW_BLOCKED",
+        message: "Вывод средств временно заблокирован. Обратитесь в поддержку."
+      });
+    }
+    const result = await prisma.$transaction(async (tx) => {
+      const affected = await tx.$executeRaw`
+        UPDATE "User" SET "demoBalance" = "demoBalance" + "referralBalance", "referralBalance" = 0
+        WHERE id = ${req.userId} AND "referralBalance" > 0
+      `;
+      if (affected === 0) {
+        return null;
+      }
+      const updated = await tx.user.findUnique({
+        where: { id: req.userId },
+        select: { demoBalance: true, referralBalance: true }
+      });
+      if (!updated) return null;
+      const withdrawn = Number(user.referralBalance);
+      await createBalanceAudit(tx, {
+        userId: req.userId!,
+        type: "referral_transfer",
+        amount: withdrawn,
+        balanceBefore: Number(updated.demoBalance) - withdrawn,
+        balanceAfter: Number(updated.demoBalance),
+        refType: "referral"
+      });
+      return updated;
+    });
+
+    if (!result) {
+      return res.status(400).json({ message: "Nothing to withdraw" });
+    }
+    const withdrawn = Number(user.referralBalance);
+    const balanceAfter = Number(result.demoBalance);
+    notifyBalanceChange(prisma, {
+      userId: req.userId!,
+      type: "referral_transfer",
+      amount: withdrawn,
+      balanceBefore: balanceAfter - withdrawn,
+      balanceAfter,
+      refType: "referral"
+    }).catch(() => {});
+    return res.json({
+      demoBalance: balanceAfter,
+      referralBalance: 0,
+      withdrawn
+    });
+  }
+);
+
+// --- Referral Partners: отдельная регистрация/авторизация, личный кабинет ---
+app.post("/referral-partners/register", async (req, res) => {
+  const { email, password, name } = req.body as { email?: string; password?: string; name?: string };
+  if (!email || !password || password.length < 6) {
+    return res.status(400).json({ message: "Email и пароль (мин. 6 символов) обязательны" });
+  }
+  const existing = await prisma.referralPartner.findUnique({ where: { email } });
+  if (existing) {
+    return res.status(400).json({ message: "Email уже зарегистрирован" });
+  }
+  let code = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    code = generatePartnerReferralCode();
+    const existingCode = await prisma.referralPartner.findUnique({ where: { referralCode: code } })
+      || await prisma.user.findUnique({ where: { referralCode: code } });
+    if (!existingCode) break;
+  }
+  if (!code) {
+    return res.status(500).json({ message: "Не удалось сгенерировать реферальный код" });
+  }
+  const hash = await bcrypt.hash(password, 10);
+  const defaultCpa = process.env.REFERRAL_DEFAULT_CPA ? Number(process.env.REFERRAL_DEFAULT_CPA) : null;
+  const partner = await prisma.referralPartner.create({
+    data: {
+      email,
+      password: hash,
+      name: name?.trim() || null,
+      referralCode: code,
+      ...(defaultCpa != null && defaultCpa > 0 && { cpaAmount: defaultCpa })
+    }
+  });
+  const token = jwt.sign({ referralPartnerId: partner.id }, JWT_SECRET, { expiresIn: "7d" });
+  setPartnerAuthCookie(res, token);
+  return res.json({
+    token,
+    partner: {
+      id: partner.id,
+      email: partner.email,
+      name: partner.name,
+      referralCode: partner.referralCode
+    }
+  });
+});
+
+app.post("/referral-partners/login", async (req, res) => {
+  const { email, password } = req.body as { email?: string; password?: string };
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email и пароль обязательны" });
+  }
+  const partner = await prisma.referralPartner.findUnique({ where: { email } });
+  if (!partner || !(await bcrypt.compare(password, partner.password))) {
+    return res.status(400).json({ message: "Неверные учетные данные" });
+  }
+  const token = jwt.sign({ referralPartnerId: partner.id }, JWT_SECRET, { expiresIn: "7d" });
+  setPartnerAuthCookie(res, token);
+  return res.json({
+    token,
+    partner: {
+      id: partner.id,
+      email: partner.email,
+      name: partner.name,
+      referralCode: partner.referralCode
+    }
+  });
+});
+
+app.post("/referral-partners/logout", (_req, res) => {
+  clearPartnerAuthCookie(res);
+  return res.json({ ok: true });
+});
+
+// --- Вывод накопленных средств партнёра на баланс (User с тем же email) ---
+app.post(
+  "/referral-partners/withdraw",
+  partnerAuthMiddleware,
+  rateLimitMiddleware({ windowMs: RATE_WINDOW_MS, max: 10 }),
+  async (req: AuthRequest, res) => {
+    const withdrawConfig = await getReferralWithdrawConfig();
+    if (withdrawConfig.viaManager) {
+      return res.status(403).json({
+        code: "WITHDRAW_VIA_MANAGER",
+        message: "Вывод средств выполняется через менеджера в Telegram",
+        managerTelegram: withdrawConfig.managerTelegram
+      });
+    }
+    const partner = await prisma.referralPartner.findUnique({
+      where: { id: req.referralPartnerId },
+      select: { email: true, referralBalance: true }
+    });
+    if (!partner) return res.status(401).json({ message: "Partner not found" });
+    const balance = Number(partner.referralBalance ?? 0);
+    if (balance <= 0) {
+      return res.status(400).json({ message: "Нечего выводить" });
+    }
+    const user = await prisma.user.findUnique({
+      where: { email: partner.email },
+      select: { id: true, demoBalance: true, blockedAt: true, withdrawBlockedAt: true }
+    });
+    if (!user) {
+      return res.status(400).json({
+        message: "Создайте торговый аккаунт с тем же email для вывода средств"
+      });
+    }
+    if (user.blockedAt) {
+      return res.status(403).json({ message: "Торговый аккаунт заблокирован" });
+    }
+    if (user.withdrawBlockedAt) {
+      return res.status(403).json({ message: "Вывод временно заблокирован. Обратитесь в поддержку." });
+    }
+    const result = await prisma.$transaction(async (tx) => {
+      const affected = await tx.referralPartner.updateMany({
+        where: { id: req.referralPartnerId, referralBalance: { gt: 0 } },
+        data: { referralBalance: 0 }
+      });
+      if (affected.count === 0) return null;
+      await tx.user.update({
+        where: { id: user.id },
+        data: { demoBalance: { increment: balance } }
+      });
+      await createBalanceAudit(tx, {
+        userId: user.id,
+        type: "referral_transfer",
+        amount: balance,
+        balanceBefore: Number(user.demoBalance),
+        balanceAfter: Number(user.demoBalance) + balance,
+        refType: "referral"
+      });
+      return { demoBalance: Number(user.demoBalance) + balance };
+    });
+    if (!result) return res.status(400).json({ message: "Нечего выводить" });
+    notifyBalanceChange(prisma, {
+      userId: user.id,
+      type: "referral_transfer",
+      amount: balance,
+      balanceBefore: Number(user.demoBalance),
+      balanceAfter: result.demoBalance,
+      refType: "referral"
+    }).catch(() => {});
+    return res.json({
+      referralBalance: 0,
+      withdrawn: balance,
+      demoBalance: result.demoBalance
+    });
+  }
+);
+
+app.get("/referral-partners/withdraw-config", partnerAuthMiddleware, async (_req: AuthRequest, res) => {
+  const config = await getReferralWithdrawConfig();
+  return res.json(config);
+});
+
+app.get("/referral-partners/withdrawals", partnerAuthMiddleware, async (req: AuthRequest, res) => {
+  const partner = await prisma.referralPartner.findUnique({
+    where: { id: req.referralPartnerId },
+    select: { email: true }
+  });
+  if (!partner) return res.status(401).json({ message: "Partner not found" });
   const user = await prisma.user.findUnique({
-    where: { id: req.userId }
+    where: { email: partner.email },
+    select: { id: true }
   });
   if (!user) {
-    return res.status(401).json({ message: "User not found" });
+    return res.json({ withdrawals: [], totalWithdrawn: 0 });
   }
-  if (user.blockedAt) {
-    return res.status(403).json({
-      code: "ACCOUNT_BLOCKED",
-      message: "Аккаунт заблокирован. Вывод недоступен."
-    });
+  const dateFrom = req.query.dateFrom as string | undefined;
+  const dateTo = req.query.dateTo as string | undefined;
+  const where: { userId: number; type: string; createdAt?: { gte?: Date; lte?: Date } } = {
+    userId: user.id,
+    type: "referral_transfer"
+  };
+  if (dateFrom || dateTo) {
+    where.createdAt = {};
+    if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      where.createdAt.lte = to;
+    }
   }
-  if (user.withdrawBlockedAt) {
-    return res.status(403).json({
-      code: "WITHDRAW_BLOCKED",
-      message: "Вывод средств временно заблокирован. Обратитесь в поддержку."
-    });
-  }
-  const refBalance = Number(user.referralBalance);
-  if (refBalance <= 0) {
-    return res.status(400).json({ message: "Nothing to withdraw" });
-  }
-  const result = await prisma.$transaction([
-    prisma.user.update({
-      where: { id: req.userId },
-      data: {
-        referralBalance: 0,
-        demoBalance: { increment: refBalance }
-      }
+  const [logs, agg] = await Promise.all([
+    prisma.balanceAuditLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: { id: true, amount: true, createdAt: true }
+    }),
+    prisma.balanceAuditLog.aggregate({
+      where,
+      _sum: { amount: true },
+      _count: true
     })
   ]);
-  const updated = result[0];
+  const totalWithdrawn = Number(agg._sum.amount ?? 0);
   return res.json({
-    demoBalance: Number(updated.demoBalance),
-    referralBalance: 0,
-    withdrawn: refBalance
+    withdrawals: logs.map((l) => ({
+      id: l.id,
+      amount: Number(l.amount),
+      createdAt: l.createdAt.toISOString()
+    })),
+    totalWithdrawn
+  });
+});
+
+app.get("/referral-partners/me", partnerAuthMiddleware, async (req: AuthRequest, res) => {
+  const partner = await prisma.referralPartner.findUnique({
+    where: { id: req.referralPartnerId },
+    select: { id: true, email: true, name: true, referralCode: true, referralClicks: true }
+  });
+  if (!partner) return res.status(401).json({ message: "Partner not found" });
+  return res.json(partner);
+});
+
+app.get("/referral-partners/stats", partnerAuthMiddleware, async (req: AuthRequest, res) => {
+  const referredIds = (await prisma.user.findMany({
+    where: { referralPartnerId: req.referralPartnerId },
+    select: { id: true }
+  })).map((u) => u.id);
+
+  const [referredCount, totalBets, totalLosses, totalWins] = referredIds.length > 0
+    ? await Promise.all([
+        prisma.user.count({ where: { referralPartnerId: req.referralPartnerId } }),
+        prisma.trade.count({
+          where: { userId: { in: referredIds }, status: { in: [TradeStatus.WIN, TradeStatus.LOSS] } }
+        }),
+        prisma.trade.aggregate({
+          where: { userId: { in: referredIds }, status: TradeStatus.LOSS },
+          _sum: { amount: true }
+        }),
+        prisma.trade.aggregate({
+          where: { userId: { in: referredIds }, status: TradeStatus.WIN },
+          _sum: { amount: true }
+        })
+      ])
+    : [0, 0, { _sum: { amount: null } } as { _sum: { amount: number | null } }, { _sum: { amount: null } } as { _sum: { amount: number | null } }];
+
+  const partner = await prisma.referralPartner.findUnique({
+    where: { id: req.referralPartnerId },
+    select: { referralCode: true, referralClicks: true, referralBalance: true }
+  });
+  const baseUrl = (req.get("origin") || process.env.FRONTEND_ORIGIN?.split(",")[0] || "http://localhost:3000").replace(/\/$/, "");
+  const mainSite = process.env.MAIN_SITE_URL || baseUrl.replace(/\/referral.*/, "").replace(/\/$/, "") || "http://localhost:3000";
+  const referralLink = `${mainSite}/register?ref=${partner?.referralCode ?? ""}`;
+  const totalLossesAmount = Number(totalLosses?._sum?.amount ?? 0);
+  const totalEarnings = Number(partner?.referralBalance ?? 0);
+
+  return res.json({
+    referredCount,
+    totalBets,
+    totalLossesAmount,
+    totalWinsAmount: Number(totalWins?._sum?.amount ?? 0),
+    referralClicks: partner?.referralClicks ?? 0,
+    referralLink,
+    referralBalance: totalEarnings,
+    totalEarnings
+  });
+});
+
+app.get("/referral-partners/analytics/losses", partnerAuthMiddleware, async (req: AuthRequest, res) => {
+  const referredIds = (await prisma.user.findMany({
+    where: { referralPartnerId: req.referralPartnerId },
+    select: { id: true }
+  })).map((u) => u.id);
+
+  if (referredIds.length === 0) {
+    return res.json({ referrals: [], totalEarnings: 0 });
+  }
+
+  const losses = await prisma.trade.findMany({
+    where: { userId: { in: referredIds }, status: TradeStatus.LOSS },
+    include: {
+      user: { select: { id: true, email: true, createdAt: true } },
+      tradingPair: { select: { symbol: true } }
+    },
+    orderBy: { createdAt: "desc" }
+  });
+
+  const byUser = new Map<number, { email: string; joinedAt: string; losses: number; earnings: number; trades: number }>();
+  for (const t of losses) {
+    const uid = t.userId;
+    const amt = Number(t.amount);
+    const earnings = amt * 0.5;
+    if (!byUser.has(uid)) {
+      byUser.set(uid, {
+        email: t.user.email,
+        joinedAt: t.user.createdAt.toISOString(),
+        losses: 0,
+        earnings: 0,
+        trades: 0
+      });
+    }
+    const r = byUser.get(uid)!;
+    r.losses += amt;
+    r.earnings += earnings;
+    r.trades += 1;
+  }
+
+  const referrals = Array.from(byUser.entries()).map(([userId, data]) => ({
+    userId,
+    ...data
+  })).sort((a, b) => b.earnings - a.earnings);
+
+  const totalEarnings = referrals.reduce((s, r) => s + r.earnings, 0);
+
+  return res.json({
+    referrals,
+    totalEarnings,
+    recentEarnings: losses.slice(0, 50).map((t) => {
+      const amt = Number(t.amount);
+      return {
+        id: t.id,
+        userId: t.userId,
+        userEmail: t.user.email,
+        amount: amt,
+        earnings: amt * 0.5,
+        pair: t.tradingPair.symbol,
+        direction: t.direction,
+        createdAt: t.createdAt.toISOString()
+      };
+    })
+  });
+});
+
+app.get("/referral-partners/referrals", partnerAuthMiddleware, async (req: AuthRequest, res) => {
+  const users = await prisma.user.findMany({
+    where: { referralPartnerId: req.referralPartnerId },
+    select: {
+      id: true,
+      email: true,
+      createdAt: true,
+      demoBalance: true
+    }
+  });
+
+  const userIds = users.map((u) => u.id);
+  const [lossAgg, winAgg] = userIds.length > 0
+    ? await Promise.all([
+        prisma.trade.groupBy({
+          by: ["userId"],
+          where: { userId: { in: userIds }, status: TradeStatus.LOSS },
+          _sum: { amount: true },
+          _count: true
+        }),
+        prisma.trade.groupBy({
+          by: ["userId"],
+          where: { userId: { in: userIds }, status: TradeStatus.WIN },
+          _sum: { amount: true },
+          _count: true
+        })
+      ])
+    : [[], []];
+
+  const lossMap = new Map<number, { sum: number; count: number }>();
+  for (const r of lossAgg as { userId: number; _sum: { amount: number | null }; _count: number }[]) {
+    lossMap.set(r.userId, { sum: Number(r._sum.amount ?? 0), count: r._count });
+  }
+  const winMap = new Map<number, { sum: number; count: number }>();
+  for (const r of winAgg as { userId: number; _sum: { amount: number | null }; _count: number }[]) {
+    winMap.set(r.userId, { sum: Number(r._sum.amount ?? 0), count: r._count });
+  }
+
+  const list = users.map((u) => {
+    const loss = lossMap.get(u.id) ?? { sum: 0, count: 0 };
+    const win = winMap.get(u.id) ?? { sum: 0, count: 0 };
+    return {
+      id: u.id,
+      email: u.email,
+      joinedAt: u.createdAt.toISOString(),
+      demoBalance: Number(u.demoBalance),
+      totalLosses: loss.sum,
+      lossCount: loss.count,
+      totalWins: win.sum,
+      winCount: win.count
+    };
+  });
+
+  return res.json({ referrals: list });
+});
+
+app.get("/referral-partners/referrals/:userId", partnerAuthMiddleware, async (req: AuthRequest, res) => {
+  const userId = Number(req.params.userId);
+  if (!Number.isFinite(userId)) {
+    return res.status(400).json({ message: "Invalid userId" });
+  }
+  const user = await prisma.user.findFirst({
+    where: { id: userId, referralPartnerId: req.referralPartnerId },
+    select: {
+      id: true,
+      email: true,
+      createdAt: true,
+      demoBalance: true
+    }
+  });
+  if (!user) {
+    return res.status(404).json({ message: "Referral not found" });
+  }
+
+  const [lossAgg, winAgg, trades, payins, cpaPayments] = await Promise.all([
+    prisma.trade.aggregate({
+      where: { userId, status: TradeStatus.LOSS },
+      _sum: { amount: true },
+      _count: true
+    }),
+    prisma.trade.aggregate({
+      where: { userId, status: TradeStatus.WIN },
+      _sum: { amount: true },
+      _count: true
+    }),
+    prisma.trade.findMany({
+      where: { userId, status: { in: [TradeStatus.WIN, TradeStatus.LOSS] } },
+      include: { tradingPair: { select: { symbol: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 50
+    }),
+    prisma.paymentTransaction.findMany({
+      where: { userId, type: "payin", status: "success" },
+      select: { amount: true, createdAt: true },
+      orderBy: { createdAt: "asc" }
+    }),
+    prisma.referralCpaPayment.findFirst({
+      where: { partnerId: req.referralPartnerId!, userId },
+      select: { amount: true, createdAt: true }
+    })
+  ]);
+
+  const totalLosses = Number(lossAgg._sum.amount ?? 0);
+  const totalWins = Number(winAgg._sum.amount ?? 0);
+  const revShare = totalLosses * 0.5;
+  const cpaAmount = cpaPayments ? Number(cpaPayments.amount) : 0;
+  const totalEarnings = revShare + cpaAmount;
+
+  let ftd: { amount: number; date: string } | null = null;
+  const redeps: Array<{ amount: number; date: string }> = [];
+  if (payins.length > 0) {
+    ftd = { amount: Number(payins[0].amount), date: payins[0].createdAt.toISOString() };
+    for (let i = 1; i < payins.length; i++) {
+      redeps.push({ amount: Number(payins[i].amount), date: payins[i].createdAt.toISOString() });
+    }
+  }
+
+  return res.json({
+    referral: {
+      id: user.id,
+      email: user.email,
+      joinedAt: user.createdAt.toISOString(),
+      demoBalance: Number(user.demoBalance)
+    },
+    stats: {
+      totalTrades: lossAgg._count + winAgg._count,
+      lossCount: lossAgg._count,
+      winCount: winAgg._count,
+      totalLosses,
+      totalWins,
+      ftd,
+      redeps,
+      cpaAmount,
+      revShare,
+      totalEarnings
+    },
+    recentTrades: trades.map((t) => ({
+      id: t.id,
+      pair: t.tradingPair.symbol,
+      direction: t.direction,
+      amount: Number(t.amount),
+      status: t.status,
+      createdAt: t.createdAt.toISOString()
+    }))
+  });
+});
+
+// --- Referral Partners: отчёт с фильтрами (Traffic, CPA, Rev, Performance) ---
+type GroupBy = "day" | "week" | "month";
+
+function truncateToGroup(date: Date, groupBy: GroupBy): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  if (groupBy === "day") return `${y}-${m}-${d}`;
+  if (groupBy === "week") {
+    const start = new Date(date);
+    start.setDate(date.getDate() - date.getDay());
+    return truncateToGroup(start, "day");
+  }
+  return `${y}-${m}`;
+}
+
+app.get("/referral-partners/report", partnerAuthMiddleware, async (req: AuthRequest, res) => {
+  const partnerId = req.referralPartnerId!;
+  const dateFrom = req.query.dateFrom as string;
+  const dateTo = req.query.dateTo as string;
+  const groupBy = (req.query.groupBy as GroupBy) || "day";
+
+  const from = dateFrom ? new Date(dateFrom) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const to = dateTo ? new Date(dateTo) : new Date();
+  from.setHours(0, 0, 0, 0);
+  to.setHours(23, 59, 59, 999);
+
+  const referredIds = (await prisma.user.findMany({
+    where: { referralPartnerId: partnerId },
+    select: { id: true, createdAt: true }
+  })).map((u) => u.id);
+
+  // Clicks by date
+  const clickEvents = await prisma.referralClickEvent.findMany({
+    where: { partnerId, createdAt: { gte: from, lte: to } },
+    select: { createdAt: true, ipHash: true }
+  });
+
+  const clickByDate = new Map<string, { total: number; unique: number }>();
+  const uniqueIpsByDate = new Map<string, Set<string>>();
+  for (const e of clickEvents) {
+    const key = truncateToGroup(e.createdAt, groupBy);
+    if (!clickByDate.has(key)) {
+      clickByDate.set(key, { total: 0, unique: 0 });
+      uniqueIpsByDate.set(key, new Set());
+    }
+    const r = clickByDate.get(key)!;
+    r.total += 1;
+    if (e.ipHash) {
+      if (!uniqueIpsByDate.get(key)!.has(e.ipHash)) {
+        uniqueIpsByDate.get(key)!.add(e.ipHash);
+        r.unique += 1;
+      }
+    } else {
+      r.unique += 1;
+    }
+  }
+
+  // Registrations by date
+  const regByDate = new Map<string, number>();
+  for (const u of await prisma.user.findMany({
+    where: { referralPartnerId: partnerId, createdAt: { gte: from, lte: to } },
+    select: { createdAt: true }
+  })) {
+    const key = truncateToGroup(u.createdAt, groupBy);
+    regByDate.set(key, (regByDate.get(key) ?? 0) + 1);
+  }
+
+  // FTD: first payin per user
+  const payins = await prisma.paymentTransaction.findMany({
+    where: {
+      userId: { in: referredIds },
+      type: "payin",
+      status: "success",
+      createdAt: { gte: from, lte: to }
+    },
+    select: { userId: true, amount: true, createdAt: true },
+    orderBy: { createdAt: "asc" }
+  });
+  const firstPayinByUser = new Map<number, { amount: number; createdAt: Date }>();
+  for (const p of payins) {
+    if (!firstPayinByUser.has(p.userId)) {
+      firstPayinByUser.set(p.userId, { amount: Number(p.amount), createdAt: p.createdAt });
+    }
+  }
+  const ftdByDate = new Map<string, { count: number; amount: number }>();
+  for (const [, v] of firstPayinByUser) {
+    if (v.createdAt >= from && v.createdAt <= to) {
+      const key = truncateToGroup(v.createdAt, groupBy);
+      const r = ftdByDate.get(key) ?? { count: 0, amount: 0 };
+      r.count += 1;
+      r.amount += v.amount;
+      ftdByDate.set(key, r);
+    }
+  }
+
+  // ReDeps: subsequent payins
+  const redepsByDate = new Map<string, { count: number; amount: number }>();
+  for (const p of payins) {
+    if (firstPayinByUser.has(p.userId) && firstPayinByUser.get(p.userId)!.createdAt.getTime() !== p.createdAt.getTime()) {
+      const key = truncateToGroup(p.createdAt, groupBy);
+      const r = redepsByDate.get(key) ?? { count: 0, amount: 0 };
+      r.count += 1;
+      r.amount += Number(p.amount);
+      redepsByDate.set(key, r);
+    }
+  }
+
+  // CPA
+  const cpaPayments = await prisma.referralCpaPayment.findMany({
+    where: { partnerId, createdAt: { gte: from, lte: to } },
+    select: { amount: true, createdAt: true }
+  });
+  const cpaByDate = new Map<string, number>();
+  for (const c of cpaPayments) {
+    const key = truncateToGroup(c.createdAt, groupBy);
+    cpaByDate.set(key, (cpaByDate.get(key) ?? 0) + Number(c.amount));
+  }
+
+  // Rev Share: 50% of losses from referred users
+  const losses = await prisma.trade.findMany({
+    where: {
+      userId: { in: referredIds },
+      status: TradeStatus.LOSS,
+      createdAt: { gte: from, lte: to }
+    },
+    select: { amount: true, createdAt: true }
+  });
+  const revByDate = new Map<string, number>();
+  for (const t of losses) {
+    const key = truncateToGroup(t.createdAt, groupBy);
+    revByDate.set(key, (revByDate.get(key) ?? 0) + Number(t.amount) * 0.5);
+  }
+
+  // Purchases (trades) and value
+  const trades = await prisma.trade.findMany({
+    where: {
+      userId: { in: referredIds },
+      status: { in: [TradeStatus.WIN, TradeStatus.LOSS] },
+      createdAt: { gte: from, lte: to }
+    },
+    select: { amount: true, createdAt: true }
+  });
+  const purchByDate = new Map<string, { count: number; value: number }>();
+  for (const t of trades) {
+    const key = truncateToGroup(t.createdAt, groupBy);
+    const r = purchByDate.get(key) ?? { count: 0, value: 0 };
+    r.count += 1;
+    r.value += Number(t.amount);
+    purchByDate.set(key, r);
+  }
+
+  // Withdrawals
+  const payouts = await prisma.paymentTransaction.findMany({
+    where: {
+      userId: { in: referredIds },
+      type: "payout",
+      status: "success",
+      createdAt: { gte: from, lte: to }
+    },
+    select: { amount: true, createdAt: true }
+  });
+  const withdrawByDate = new Map<string, number>();
+  for (const p of payouts) {
+    const key = truncateToGroup(p.createdAt, groupBy);
+    withdrawByDate.set(key, (withdrawByDate.get(key) ?? 0) + Number(p.amount));
+  }
+
+  // All dates in range
+  const allKeys = new Set<string>();
+  for (const m of [clickByDate, regByDate, ftdByDate, redepsByDate, cpaByDate, revByDate, purchByDate, withdrawByDate]) {
+    for (const k of m.keys()) allKeys.add(k);
+  }
+  const sortedKeys = Array.from(allKeys).sort();
+
+  const rows = sortedKeys.map((key) => {
+    const clicks = clickByDate.get(key) ?? { total: 0, unique: 0 };
+    const reg = regByDate.get(key) ?? 0;
+    const ftd = ftdByDate.get(key) ?? { count: 0, amount: 0 };
+    const redeps = redepsByDate.get(key) ?? { count: 0, amount: 0 };
+    const cpa = cpaByDate.get(key) ?? 0;
+    const rev = revByDate.get(key) ?? 0;
+    const purch = purchByDate.get(key) ?? { count: 0, value: 0 };
+    const withdraw = withdrawByDate.get(key) ?? 0;
+    const depAmount = (ftd.amount + redeps.amount);
+    const depWithdraw = depAmount - withdraw;
+    const clickToFtd = clicks.total > 0 && ftd.count > 0 ? (ftd.count / clicks.total) * 100 : 0;
+    const totalEarnings = cpa + rev;
+    const epc = clicks.total > 0 ? totalEarnings / clicks.total : 0;
+
+    return {
+      date: key,
+      totalClicks: clicks.total,
+      uniqueClicks: clicks.unique,
+      registration: reg,
+      ftd: ftd.count,
+      ftdAmount: ftd.amount,
+      redeps: redeps.count,
+      redepsAmount: redeps.amount,
+      rewardCpaConfirm: cpa,
+      rewardCpaHold: 0,
+      incomeRevConfirm: rev,
+      incomeRevHold: 0,
+      clickToFtd: Math.round(clickToFtd * 100) / 100,
+      epc: Math.round(epc * 100) / 100,
+      purchases: purch.count,
+      purchValue: purch.value,
+      withdrawal: withdraw,
+      depWithdrawal: depWithdraw
+    };
+  });
+
+  const totals = rows.reduce(
+    (acc, r) => ({
+      totalClicks: acc.totalClicks + r.totalClicks,
+      uniqueClicks: acc.uniqueClicks + r.uniqueClicks,
+      registration: acc.registration + r.registration,
+      ftd: acc.ftd + r.ftd,
+      ftdAmount: acc.ftdAmount + r.ftdAmount,
+      redeps: acc.redeps + r.redeps,
+      redepsAmount: acc.redepsAmount + r.redepsAmount,
+      rewardCpaConfirm: acc.rewardCpaConfirm + r.rewardCpaConfirm,
+      incomeRevConfirm: acc.incomeRevConfirm + r.incomeRevConfirm,
+      purchases: acc.purchases + r.purchases,
+      purchValue: acc.purchValue + r.purchValue,
+      withdrawal: acc.withdrawal + r.withdrawal,
+      depWithdrawal: acc.depWithdrawal + r.depWithdrawal
+    }),
+    {
+      totalClicks: 0,
+      uniqueClicks: 0,
+      registration: 0,
+      ftd: 0,
+      ftdAmount: 0,
+      redeps: 0,
+      redepsAmount: 0,
+      rewardCpaConfirm: 0,
+      incomeRevConfirm: 0,
+      purchases: 0,
+      purchValue: 0,
+      withdrawal: 0,
+      depWithdrawal: 0
+    }
+  );
+  const totalClicks = totals.totalClicks;
+  totals.clickToFtd = totalClicks > 0 && totals.ftd > 0 ? Math.round((totals.ftd / totalClicks) * 10000) / 100 : 0;
+  totals.epc = totalClicks > 0 ? Math.round(((totals.rewardCpaConfirm + totals.incomeRevConfirm) / totalClicks) * 100) / 100 : 0;
+
+  return res.json({
+    rows,
+    totals,
+    dateFrom: from.toISOString().slice(0, 10),
+    dateTo: to.toISOString().slice(0, 10),
+    groupBy
   });
 });
 
@@ -1340,7 +2284,12 @@ app.get("/payments/config", authMiddleware, (_req, res) => {
   return res.json({ highHelpEnabled: isHighHelpConfigured() });
 });
 
-app.post("/payments/deposit", authMiddleware, requireNotBlockedMiddleware, async (req: AuthRequest, res) => {
+app.post(
+  "/payments/deposit",
+  authMiddleware,
+  rateLimitMiddleware({ windowMs: RATE_WINDOW_MS, max: 10 }),
+  requireNotBlockedMiddleware,
+  async (req: AuthRequest, res) => {
   if (!isHighHelpConfigured()) {
     return res.status(503).json({ message: "Платежи временно недоступны" });
   }
@@ -1411,7 +2360,12 @@ app.post("/payments/deposit", authMiddleware, requireNotBlockedMiddleware, async
   }
 });
 
-app.post("/payments/withdraw", authMiddleware, requireNotBlockedMiddleware, async (req: AuthRequest, res) => {
+app.post(
+  "/payments/withdraw",
+  authMiddleware,
+  rateLimitMiddleware({ windowMs: RATE_WINDOW_MS, max: 10 }),
+  requireNotBlockedMiddleware,
+  async (req: AuthRequest, res) => {
   if (!isHighHelpConfigured()) {
     return res.status(503).json({ message: "Платежи временно недоступны" });
   }
@@ -1447,6 +2401,7 @@ app.post("/payments/withdraw", authMiddleware, requireNotBlockedMiddleware, asyn
   const successUrl = `${base}/payments/webhook`;
   const declineUrl = `${base}/payments/webhook`;
 
+  const balanceBefore = Number(user.demoBalance);
   try {
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
@@ -1464,7 +2419,26 @@ app.post("/payments/withdraw", authMiddleware, requireNotBlockedMiddleware, asyn
           method: "card-p2p"
         }
       });
+      await createBalanceAudit(tx, {
+        userId: user.id,
+        type: "withdraw",
+        amount: -num,
+        balanceBefore,
+        balanceAfter: balanceBefore - num,
+        refType: "payment",
+        refId: paymentId
+      });
     });
+
+    notifyBalanceChange(prisma, {
+      userId: user.id,
+      type: "withdraw",
+      amount: -num,
+      balanceBefore,
+      balanceAfter: balanceBefore - num,
+      refType: "payment",
+      refId: paymentId
+    }).catch(() => {});
 
     const result = await createPayout({
       paymentId,
@@ -1513,15 +2487,32 @@ app.post("/payments/withdraw", authMiddleware, requireNotBlockedMiddleware, asyn
   }
 });
 
-// Колбек HighHelp (без auth). Идемпотентность по project_id:payment_id:status:sub_status
-app.post("/payments/webhook", async (req, res) => {
-  const body = req.body as {
+async function paymentsWebhookHandler(
+  req: express.Request,
+  res: express.Response
+): Promise<void> {
+  const rawBody = req.body as Buffer | undefined;
+  if (!Buffer.isBuffer(rawBody)) {
+    res.status(400).send("Bad Request");
+    return;
+  }
+  let body: {
     project_id?: string;
     general?: { request_id?: string; payment_id?: string };
     status?: { status?: string; sub_status?: string; status_description?: string };
     payment_info?: { amount?: number; currency?: string; type?: string };
   };
+  try {
+    body = JSON.parse(rawBody.toString("utf8"));
+  } catch {
+    res.status(400).send("Bad Request");
+    return;
+  }
   const projectId = body.project_id ?? "";
+  if (!verifyWebhookPayload(projectId, rawBody, req.headers)) {
+    res.status(401).send("Unauthorized");
+    return;
+  }
   const paymentId = body.general?.payment_id ?? "";
   const statusVal = body.status?.status ?? "";
   const subStatus = body.status?.sub_status ?? null;
@@ -1529,8 +2520,9 @@ app.post("/payments/webhook", async (req, res) => {
 
   try {
     await prisma.processedCallback.create({ data: { idempotencyKey } });
-  } catch (e) {
-    return res.status(200).send("OK");
+  } catch {
+    res.status(200).send("OK");
+    return;
   }
 
   const tx = await prisma.paymentTransaction.findUnique({
@@ -1538,7 +2530,8 @@ app.post("/payments/webhook", async (req, res) => {
     include: { user: true }
   });
   if (!tx) {
-    return res.status(200).send("OK");
+    res.status(200).send("OK");
+    return;
   }
 
   await prisma.paymentTransaction.update({
@@ -1552,21 +2545,102 @@ app.post("/payments/webhook", async (req, res) => {
 
   if (tx.type === "payin" && statusVal === "success") {
     const amount = Number(tx.amount);
-    await prisma.user.update({
-      where: { id: tx.userId },
-      data: { demoBalance: { increment: amount } }
+    let balanceBefore = 0;
+    await prisma.$transaction(async (t) => {
+      const u = await t.user.findUnique({
+        where: { id: tx.userId },
+        select: { demoBalance: true, referralPartnerId: true }
+      });
+      if (!u) return;
+      balanceBefore = Number(u.demoBalance);
+      await t.user.update({
+        where: { id: tx.userId },
+        data: { demoBalance: { increment: amount } }
+      });
+      await createBalanceAudit(t, {
+        userId: tx.userId,
+        type: "deposit",
+        amount,
+        balanceBefore,
+        balanceAfter: balanceBefore + amount,
+        refType: "payment",
+        refId: tx.paymentId
+      });
+      // FTD: first successful payin — начисляем CPA партнёру
+      if (u.referralPartnerId) {
+        const prevPayins = await t.paymentTransaction.count({
+          where: {
+            userId: tx.userId,
+            type: "payin",
+            status: "success",
+            id: { not: tx.id }
+          }
+        });
+        if (prevPayins === 0) {
+          const partner = await t.referralPartner.findUnique({
+            where: { id: u.referralPartnerId },
+            select: { cpaAmount: true, referralBalance: true }
+          });
+          const cpa = partner?.cpaAmount ? Number(partner.cpaAmount) : 0;
+          if (cpa > 0) {
+            await t.referralCpaPayment.create({
+              data: { partnerId: u.referralPartnerId, userId: tx.userId, amount: cpa }
+            });
+            await t.referralPartner.update({
+              where: { id: u.referralPartnerId },
+              data: { referralBalance: { increment: cpa } }
+            });
+          }
+        }
+      }
     });
+    notifyBalanceChange(prisma, {
+      userId: tx.userId,
+      type: "deposit",
+      amount,
+      balanceBefore,
+      balanceAfter: balanceBefore + amount,
+      refType: "payment",
+      refId: tx.paymentId
+    }).catch(() => {});
   }
   if (tx.type === "payout" && (statusVal === "decline" || statusVal === "error")) {
     const amount = Number(tx.amount);
-    await prisma.user.update({
-      where: { id: tx.userId },
-      data: { demoBalance: { increment: amount } }
+    let balanceBefore = 0;
+    await prisma.$transaction(async (t) => {
+      const u = await t.user.findUnique({
+        where: { id: tx.userId },
+        select: { demoBalance: true }
+      });
+      if (!u) return;
+      balanceBefore = Number(u.demoBalance);
+      await t.user.update({
+        where: { id: tx.userId },
+        data: { demoBalance: { increment: amount } }
+      });
+      await createBalanceAudit(t, {
+        userId: tx.userId,
+        type: "withdraw_refund",
+        amount,
+        balanceBefore,
+        balanceAfter: balanceBefore + amount,
+        refType: "payment",
+        refId: tx.paymentId
+      });
     });
+    notifyBalanceChange(prisma, {
+      userId: tx.userId,
+      type: "withdraw_refund",
+      amount,
+      balanceBefore,
+      balanceAfter: balanceBefore + amount,
+      refType: "payment",
+      refId: tx.paymentId
+    }).catch(() => {});
   }
 
-  return res.status(200).send("OK");
-});
+  res.status(200).send("OK");
+}
 
 app.get("/payments/history", authMiddleware, async (req: AuthRequest, res) => {
   const list = await prisma.paymentTransaction.findMany({
@@ -1634,6 +2708,43 @@ app.post(
       }
       throw err;
     }
+  }
+);
+
+// --- Admin: настройки реферальной программы (вывод через менеджера) ---
+app.get(
+  "/admin/settings/referral",
+  authMiddleware,
+  adminMiddleware,
+  async (_req: AuthRequest, res) => {
+    const config = await getReferralWithdrawConfig();
+    return res.json(config);
+  }
+);
+
+app.patch(
+  "/admin/settings/referral",
+  authMiddleware,
+  adminMiddleware,
+  async (req: AuthRequest, res) => {
+    const body = req.body as { withdrawViaManager?: boolean; managerTelegram?: string };
+    if (typeof body.withdrawViaManager === "boolean") {
+      await prisma.appSetting.upsert({
+        where: { key: "referral_withdraw_via_manager" },
+        create: { key: "referral_withdraw_via_manager", value: body.withdrawViaManager ? "true" : "false" },
+        update: { value: body.withdrawViaManager ? "true" : "false" }
+      });
+    }
+    if (typeof body.managerTelegram === "string") {
+      const val = body.managerTelegram.trim();
+      await prisma.appSetting.upsert({
+        where: { key: "referral_manager_telegram" },
+        create: { key: "referral_manager_telegram", value: val },
+        update: { value: val }
+      });
+    }
+    const config = await getReferralWithdrawConfig();
+    return res.json(config);
   }
 );
 
@@ -1816,7 +2927,12 @@ app.get("/candles", authMiddleware, requireNotBlockedMiddleware, async (req: Aut
 });
 
 // --- Trade opening ---
-app.post("/trade/open", authMiddleware, requireNotBlockedMiddleware, async (req: AuthRequest, res) => {
+app.post(
+  "/trade/open",
+  authMiddleware,
+  rateLimitMiddleware({ windowMs: RATE_WINDOW_MS, max: 30 }),
+  requireNotBlockedMiddleware,
+  async (req: AuthRequest, res) => {
   try {
     const body = req.body as {
       tradingPairId?: number | string;
@@ -1845,14 +2961,11 @@ app.post("/trade/open", authMiddleware, requireNotBlockedMiddleware, async (req:
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: req.userId }
+      where: { id: req.userId },
+      select: { id: true }
     });
     if (!user) {
       return res.status(401).json({ message: "User not found" });
-    }
-
-    if (Number(user.demoBalance) < amount) {
-      return res.status(400).json({ message: "Insufficient balance" });
     }
 
     const pair = await prisma.tradingPair.findUnique({
@@ -1868,12 +2981,14 @@ app.post("/trade/open", authMiddleware, requireNotBlockedMiddleware, async (req:
     const expiresAt = new Date(Date.now() + durationSeconds * 1000);
 
     const result = await prisma.$transaction(async (tx) => {
-      const updatedUser = await tx.user.update({
-        where: { id: user.id },
-        data: {
-          demoBalance: Number(user.demoBalance) - amount
-        }
-      });
+      // Атомарное списание: только если баланс >= amount (защита от гонки)
+      const affected = await tx.$executeRaw`
+        UPDATE "User" SET "demoBalance" = "demoBalance" - ${amount}
+        WHERE id = ${user.id} AND "demoBalance" >= ${amount}
+      `;
+      if (affected === 0) {
+        throw new Error("INSUFFICIENT_BALANCE");
+      }
 
       const trade = await tx.trade.create({
         data: {
@@ -1886,16 +3001,47 @@ app.post("/trade/open", authMiddleware, requireNotBlockedMiddleware, async (req:
         }
       });
 
+      const updatedUser = await tx.user.findUnique({
+        where: { id: user.id },
+        select: { demoBalance: true }
+      });
+      if (!updatedUser) throw new Error("User not found");
+
+      const balanceAfter = Number(updatedUser.demoBalance);
+      await createBalanceAudit(tx, {
+        userId: user.id,
+        type: "trade_open",
+        amount: -amount,
+        balanceBefore: balanceAfter + amount,
+        balanceAfter,
+        refType: "trade",
+        refId: String(trade.id)
+      });
+
       return { updatedUser, trade };
     });
 
     broadcastTradeUpdate(result.trade.id);
 
+    const balanceAfter = Number(result.updatedUser.demoBalance);
+    notifyBalanceChange(prisma, {
+      userId: user.id,
+      type: "trade_open",
+      amount: -amount,
+      balanceBefore: balanceAfter + amount,
+      balanceAfter,
+      refType: "trade",
+      refId: String(result.trade.id)
+    }).catch(() => {});
+
     return res.json({
       trade: result.trade,
-      balance: Number(result.updatedUser.demoBalance)
+      balance: balanceAfter
     });
   } catch (err) {
+    if (err instanceof Error && err.message === "INSUFFICIENT_BALANCE") {
+      return res.status(400).json({ message: "Insufficient balance" });
+    }
     console.error("Trade open error:", err);
     return res.status(500).json({ message: "Ошибка открытия сделки" });
   }
@@ -1953,44 +3099,71 @@ async function settleExpiredTrades() {
       status = TradeStatus.WIN;
     }
 
-    // For MVP: WIN returns 2x stake (stake was already deducted on open)
-    // LOSS: referrer gets 50% of the lost amount
     const tradeUser = await prisma.user.findUnique({
       where: { id: trade.userId },
-      select: { referrerId: true }
+      select: { referrerId: true, referralPartnerId: true }
     });
 
-    await prisma.$transaction(async (tx) => {
-      await tx.trade.update({
-        where: { id: trade.id },
+    const didUpdate = await prisma.$transaction(async (tx) => {
+      const updateResult = await tx.trade.updateMany({
+        where: { id: trade.id, status: TradeStatus.ACTIVE },
         data: {
           status,
           closePrice: currentPrice
         }
       });
 
+      if (updateResult.count === 0) return false;
+
       if (status === TradeStatus.WIN) {
         const payout = Number(trade.amount) * 2;
-        await tx.user.update({
+        const u = await tx.user.findUnique({
           where: { id: trade.userId },
-          data: {
-            demoBalance: {
-              increment: payout
-            }
-          }
+          select: { demoBalance: true }
         });
-      } else if (status === TradeStatus.LOSS && tradeUser?.referrerId) {
+        if (u) {
+          const balanceBefore = Number(u.demoBalance);
+          const balanceAfter = balanceBefore + payout;
+          await tx.user.update({
+            where: { id: trade.userId },
+            data: { demoBalance: { increment: payout } }
+          });
+          await createBalanceAudit(tx, {
+            userId: trade.userId,
+            type: "trade_win",
+            amount: payout,
+            balanceBefore,
+            balanceAfter,
+            refType: "trade",
+            refId: String(trade.id)
+          });
+          notifyBalanceChange(prisma, {
+            userId: trade.userId,
+            type: "trade_win",
+            amount: payout,
+            balanceBefore,
+            balanceAfter,
+            refType: "trade",
+            refId: String(trade.id)
+          }).catch(() => {});
+        }
+      } else if (tradeUser?.referrerId) {
         const referrerShare = Number(trade.amount) * 0.5;
         await tx.user.update({
           where: { id: tradeUser.referrerId },
-          data: {
-            referralBalance: { increment: referrerShare }
-          }
+          data: { referralBalance: { increment: referrerShare } }
+        });
+      } else if (tradeUser?.referralPartnerId) {
+        const partnerShare = Number(trade.amount) * 0.5;
+        await tx.referralPartner.update({
+          where: { id: tradeUser.referralPartnerId },
+          data: { referralBalance: { increment: partnerShare } }
         });
       }
+      return true;
     });
 
-    broadcastTradeUpdate(trade.id);
+    if (didUpdate) broadcastTradeUpdate(trade.id);
   }
 }
 

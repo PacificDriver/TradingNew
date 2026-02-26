@@ -1,6 +1,6 @@
 /**
- * HighHelp API client (H2H).
- * Документация: https://awesomedoc.highhelp.io/ru/HEAD/
+ * HighHelp API client (H2H). Пополнение и вывод P2P (RUB).
+ * Документация: https://docs.highhelp.io (ранее awesomedoc.highhelp.io)
  * API: https://api.hh-processing.com
  */
 
@@ -236,4 +236,102 @@ export async function createPayout(params: PayoutParams): Promise<PayoutResponse
 /** Проверка, настроен ли HighHelp (для условного отображения реальных платежей) */
 export function isHighHelpConfigured(): boolean {
   return Boolean(process.env.HIGHHELP_PROJECT_ID && process.env.HIGHHELP_PRIVATE_KEY_PEM);
+}
+
+const WEBHOOK_SECRET_HEADER = "x-webhook-secret";
+const WEBHOOK_SIGNATURE_HEADER = "x-highhelp-signature";
+const WEBHOOK_SIGNATURE_ALT = "x-signature";
+const ACCESS_SIGNATURE_HEADER = "x-access-signature";
+const ACCESS_TIMESTAMP_HEADER = "x-access-timestamp";
+
+function base64UrlDecode(str: string): Buffer {
+  let b64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = b64.length % 4;
+  if (pad) b64 += "=".repeat(4 - pad);
+  return Buffer.from(b64, "base64");
+}
+
+function getHeader(headers: Record<string, string | string[] | undefined>, name: string): string | undefined {
+  const v = headers[name.toLowerCase()] ?? headers[name];
+  return Array.isArray(v) ? v[0] : typeof v === "string" ? v : undefined;
+}
+
+/**
+ * Проверка RSA-подписи колбека HighHelp (как в доке: base64url(normalize(body)) + timestamp → SHA256 → подпись).
+ * Публичный ключ берётся из ЛК: «API» → «Настройки Callback» → Public Key (HIGHHELP_CALLBACK_PUBLIC_KEY_PEM).
+ */
+function verifyCallbackRsaSignature(
+  rawBody: Buffer,
+  headers: Record<string, string | string[] | undefined>,
+  publicKeyPem: string
+): boolean {
+  const sigB64 = getHeader(headers, ACCESS_SIGNATURE_HEADER);
+  const timestamp = getHeader(headers, ACCESS_TIMESTAMP_HEADER);
+  if (!sigB64 || !timestamp) return false;
+  let body: object;
+  try {
+    body = JSON.parse(rawBody.toString("utf8")) as object;
+  } catch {
+    return false;
+  }
+  const normalized = buildNormalizedString(body);
+  const normalizedBase64 = base64UrlEncode(Buffer.from(normalized, "utf8"));
+  const message = `${normalizedBase64}${timestamp}`;
+  const hash = crypto.createHash("sha256").update(message, "utf8").digest();
+  const sigBuffer = base64UrlDecode(sigB64.trim());
+  try {
+    const key = crypto.createPublicKey({ key: publicKeyPem, format: "pem" });
+    return crypto.verify("RSA-SHA256", hash, key, sigBuffer);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Проверка колбека HighHelp: project_id и подпись.
+ * Подпись: либо RSA (публичный ключ из ЛК — HIGHHELP_CALLBACK_PUBLIC_KEY_PEM), либо секрет в заголовке / HMAC (HIGHHELP_WEBHOOK_SECRET).
+ * Документация: https://docs.highhelp.io/sdk/js_example/ — «Обработка колбэков», «валидировать цифровую подпись».
+ */
+export function verifyWebhookPayload(
+  projectId: string,
+  rawBody: Buffer,
+  headers: Record<string, string | string[] | undefined>
+): boolean {
+  const expectedProjectId = process.env.HIGHHELP_PROJECT_ID?.trim();
+  if (!expectedProjectId || projectId !== expectedProjectId) {
+    return false;
+  }
+
+  const callbackPublicKey = process.env.HIGHHELP_CALLBACK_PUBLIC_KEY_PEM?.trim();
+  if (callbackPublicKey) {
+    return verifyCallbackRsaSignature(rawBody, headers, callbackPublicKey);
+  }
+
+  const secret = process.env.HIGHHELP_WEBHOOK_SECRET?.trim();
+  if (!secret) {
+    return true;
+  }
+
+  const secretHeader = getHeader(headers, WEBHOOK_SECRET_HEADER);
+  if (secretHeader !== undefined) {
+    try {
+      return crypto.timingSafeEqual(Buffer.from(secretHeader, "utf8"), Buffer.from(secret, "utf8"));
+    } catch {
+      return false;
+    }
+  }
+
+  const sigHeader = getHeader(headers, WEBHOOK_SIGNATURE_HEADER) ?? getHeader(headers, WEBHOOK_SIGNATURE_ALT);
+  if (sigHeader) {
+    try {
+      const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+      const received = sigHeader.replace(/^sha256=/, "").trim().toLowerCase();
+      if (expected.length !== received.length) return false;
+      return crypto.timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(received, "hex"));
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
 }

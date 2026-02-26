@@ -42,13 +42,13 @@
   color-scheme: dark;
   --font-display: "Scumbria", var(--font-unbounded), ui-sans-serif, system-ui, sans-serif;
   --font-body: "Aneliza", var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
-  /* Стекло в стиле iOS: прозрачность + blur (умеренный blur = меньше лагов) */
-  --glass-bg: rgba(22, 26, 30, 0.5);
-  --glass-bg-strong: rgba(22, 26, 30, 0.72);
+  /* Стекло: оптимизированные blur для производительности */
+  --glass-bg: rgba(22, 26, 30, 0.55);
+  --glass-bg-strong: rgba(22, 26, 30, 0.78);
   --glass-border: rgba(255, 255, 255, 0.06);
   --glass-border-top: rgba(255, 255, 255, 0.09);
-  --glass-blur: 10px;
-  --glass-blur-strong: 16px;
+  --glass-blur: 6px;
+  --glass-blur-strong: 8px;
   --glass-saturate: 1.12;
   --glass-strong-saturate: 1.08;
   --glass-shadow-soft: 0 8px 30px rgba(2, 6, 23, 0.28);
@@ -147,6 +147,22 @@ body {
   color: #f0b90b;
 }
 
+/* Мобильные: удобные зоны нажатия и отключение задержки тапа */
+@media (max-width: 1023px) {
+  .chip {
+    min-height: 44px;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  button:not(.chip),
+  a[href] {
+    touch-action: manipulation;
+  }
+}
+
 /* Единый стиль скролл-контейнеров внутри таблиц/дропдаунов */
 .surface-scroll {
   scrollbar-width: thin;
@@ -238,21 +254,18 @@ body {
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  /* Изоляция: меньше перерисовок при скролле/анимации контента */
   contain: layout paint;
   transform: translateZ(0);
+  isolation: isolate;
 }
 
 .gradient-ring {
   position: absolute;
   border-radius: 50%;
-  /* Умеренный blur: баланс красоты и производительности */
-  filter: blur(60px);
+  filter: blur(36px);
   pointer-events: none;
-  /* GPU-слой для плавной анимации (только transform/opacity) */
   transform: translateZ(0);
   backface-visibility: hidden;
-  will-change: transform;
 }
 
 /* Центр — белый, к краям — цветной градиент. Кольцо 1: янтарный */
@@ -309,42 +322,10 @@ body {
   animation: ring-wave 24s ease-in-out infinite 0.5s, ring-pulse 10s ease-in-out infinite 1s;
 }
 
-/* Кольцо 4: коралловый */
-.gradient-ring-4 {
-  width: min(70vw, 520px);
-  height: min(70vw, 520px);
-  background: radial-gradient(
-    circle at 50% 50%,
-    rgba(255, 255, 255, 0.16) 0%,
-    rgba(255, 255, 255, 0.04) 32%,
-    transparent 42%,
-    rgba(251, 113, 133, 0.24) 50%,
-    rgba(244, 63, 94, 0.08) 58%,
-    transparent 69%
-  );
-  bottom: 8%;
-  right: -2%;
-  animation: ring-wave 26s ease-in-out infinite reverse 0.8s, ring-pulse 11s ease-in-out infinite 2s;
-}
-
-/* Кольцо 5: холодный синий */
+/* Кольца 4–5 скрыты для производительности (3 кольца достаточно) */
+.gradient-ring-4,
 .gradient-ring-5 {
-  width: min(62vw, 460px);
-  height: min(62vw, 460px);
-  background: radial-gradient(
-    circle at 50% 50%,
-    rgba(255, 255, 255, 0.16) 0%,
-    rgba(255, 255, 255, 0.04) 34%,
-    transparent 44%,
-    rgba(96, 165, 250, 0.22) 52%,
-    rgba(59, 130, 246, 0.08) 60%,
-    transparent 71%
-  );
-  top: 44%;
-  left: 50%;
-  margin-left: min(-31vw, -230px);
-  margin-top: min(-31vw, -230px);
-  animation: ring-wave 28s ease-in-out infinite 0.3s, ring-pulse 12s ease-in-out infinite 1.5s;
+  display: none;
 }
 
 /* Плавное волнообразное движение: только transform + opacity (GPU) */
@@ -364,22 +345,16 @@ body {
   50% { opacity: 1; }
 }
 
-/* Мобильные: меньше blur + только 3 кольца (визуально достаточно, меньше GPU) */
+/* Мобильные: ещё меньше blur для экономии GPU */
 @media (max-width: 768px) {
   .gradient-ring {
-    filter: blur(48px);
-  }
-  .gradient-ring-4,
-  .gradient-ring-5 {
-    visibility: hidden;
-    pointer-events: none;
-    animation: none;
+    filter: blur(28px);
   }
 }
 
-/* Низкая производительность: отключаем анимацию, статичная картинка */
+/* prefers-reduced-motion: статичный фон без анимаций */
 @media (prefers-reduced-motion: reduce) {
-  .gradient-ring-1, .gradient-ring-2, .gradient-ring-3, .gradient-ring-4, .gradient-ring-5 {
+  .gradient-ring-1, .gradient-ring-2, .gradient-ring-3 {
     animation: none !important;
     opacity: 0.9;
   }

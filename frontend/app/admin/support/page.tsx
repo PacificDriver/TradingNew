@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useLocale } from "../../../lib/i18n";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AuthGuard } from "../../../components/AuthGuard";
@@ -20,6 +21,7 @@ const POLL_INTERVAL_MS = 3000;
 
 export default function AdminSupportPage() {
   const router = useRouter();
+  const { t } = useLocale();
   const token = useTradingStore((s) => s.token);
   const user = useTradingStore((s) => s.user);
   const authChecked = useTradingStore((s) => s.authChecked);
@@ -161,20 +163,20 @@ export default function AdminSupportPage() {
       <div className="min-h-screen flex flex-col lg:flex-row gap-6">
         <div className="lg:w-80 shrink-0">
           <div className="flex items-center justify-between mb-4">
-            <h1 className="font-display text-xl font-semibold text-slate-100">Поддержка</h1>
+            <h1 className="font-display text-xl font-semibold text-slate-100">{t("support.title")}</h1>
             <Link
               href="/admin"
               className="text-sm text-slate-500 hover:text-slate-300"
             >
-              ← Админка
+              {t("support.adminBack")}
             </Link>
           </div>
-          <p className="text-sm text-slate-500 mb-4">Чаты с пользователями</p>
+          <p className="text-sm text-slate-500 mb-4">{t("admin.supportChats")}</p>
           <div className="glass-panel overflow-hidden rounded-xl">
             {loadingThreads ? (
-              <div className="p-4 text-slate-500 text-sm">Загрузка…</div>
+              <div className="p-4 text-slate-500 text-sm">{t("admin.supportLoading")}</div>
             ) : threads.length === 0 ? (
-              <div className="p-4 text-slate-500 text-sm">Нет обращений</div>
+              <div className="p-4 text-slate-500 text-sm">{t("admin.noTickets")}</div>
             ) : (
               <ul className="divide-y divide-slate-800/50">
                 {threads.map((t) => (
@@ -253,7 +255,7 @@ export default function AdminSupportPage() {
                     type="text"
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
-                    placeholder="Ответ пользователю…"
+                    placeholder={t("admin.replyPlaceholder")}
                     className="flex-1 input-glass rounded-xl py-2.5 px-4 text-sm"
                     maxLength={4000}
                     disabled={sending}
@@ -263,7 +265,7 @@ export default function AdminSupportPage() {
                     disabled={sending || !replyText.trim()}
                     className="btn-primary rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50"
                   >
-                    {sending ? "…" : "Отправить"}
+                    {sending ? "…" : t("admin.send")}
                   </button>
                 </div>
               </form>

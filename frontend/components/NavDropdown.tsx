@@ -20,9 +20,11 @@ type NavDropdownProps = {
   labelHref?: string;
   align?: "left" | "right";
   className?: string;
+  /** Aria-label for the menu toggle button */
+  ariaLabel?: string;
 };
 
-export function NavDropdown({ label, items, labelHref, align = "left", className = "" }: NavDropdownProps) {
+export function NavDropdown({ label, items, labelHref, align = "left", className = "", ariaLabel }: NavDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -73,7 +75,7 @@ export function NavDropdown({ label, items, labelHref, align = "left", className
           type="button"
           onClick={() => setOpen((v) => !v)}
           className={`p-2 -ml-1 text-slate-400 hover:text-slate-100 transition-colors outline-none ${open ? "text-slate-100" : ""}`}
-          aria-label="Открыть меню"
+          aria-label={ariaLabel ?? label}
         >
           <svg
             className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`}

@@ -12,7 +12,19 @@ export function authHeaders(token?: string | null): Record<string, string> {
   return headers;
 }
 
-export type ApiError = Error & { status?: number };
+/** Коды для админа: E001 — сеть/бэкенд недоступен, E002 — ответ не от API (прокси/URL), E003 — ошибка сервера 5xx */
+export type ApiError = Error & { status?: number; code?: string };
+
+/** Возвращает сообщение для пользователя: по коду — из i18n, иначе err.message. Админ видит код в console. */
+export function getDisplayMessage(e: unknown, t: (key: string) => string): string {
+  const err = e as ApiError;
+  if (err?.code && typeof t === "function") {
+    const key = `errors.${err.code}`;
+    const out = t(key);
+    if (out !== key) return out;
+  }
+  return err?.message && typeof err.message === "string" ? err.message : t("errors.generic");
+}
 
 export async function apiFetch<T>(
   path: string,
@@ -30,34 +42,59 @@ export async function apiFetch<T>(
       headers: Object.fromEntries(headers)
     });
   } catch (e) {
-    const err = new Error("Сервер недоступен") as ApiError;
+    const err = new Error("E001") as ApiError;
     err.status = 0;
+    err.code = "E001";
+    if (typeof console !== "undefined" && console.error) console.error("[API] E001 (admin): backend unreachable");
     throw err;
   }
   if (!res.ok) {
     let message = "Request failed";
+    let code: string | undefined;
     try {
       const text = await res.text();
       if (text) {
         if (text.trimStart().startsWith("<!") || text.includes("Cannot GET ") || text.includes("Cannot POST ")) {
-          message =
-            "Запрос попал не на API или бэкенд не перезапущен. Проверьте NEXT_PUBLIC_API_BASE_URL (должен быть http://localhost:4000) и перезапустите бэкенд (npm run dev в папке backend).";
+          message = "E002";
+          code = "E002";
+          if (typeof console !== "undefined" && console.error) console.error("[API] E002 (admin): response not from API, check NEXT_PUBLIC_API_BASE_URL and backend");
+        } else if (res.status >= 500) {
+          message = "E003";
+          code = "E003";
+          if (typeof console !== "undefined" && console.error) console.error("[API] E003 (admin): server error", res.status);
+        } else if (res.status === 429) {
+          message = "E429";
+          code = "E429";
         } else {
           try {
             const data = JSON.parse(text) as { message?: string };
             message = data.message ?? message;
           } catch {
-            message = text.length < 200 ? text : `Ошибка ${res.status}`;
+            message = res.status === 401 ? "Необходимо войти снова" : text.length < 200 ? text : `Ошибка ${res.status}`;
           }
         }
       } else {
-        message = res.status === 401 ? "Необходимо войти снова" : res.status === 500 ? "Ошибка сервера" : `Ошибка ${res.status}`;
+        if (res.status === 429) {
+          message = "E429";
+          code = "E429";
+        } else if (res.status === 401) message = "Необходимо войти снова";
+        else if (res.status >= 500) {
+          message = "E003";
+          code = "E003";
+          if (typeof console !== "undefined" && console.error) console.error("[API] E003 (admin): server error", res.status);
+        } else message = `Ошибка ${res.status}`;
       }
     } catch {
-      message = res.status === 401 ? "Необходимо войти снова" : `Ошибка ${res.status}`;
+      if (res.status === 401) message = "Необходимо войти снова";
+      else if (res.status >= 500) {
+        code = "E003";
+        message = "E003";
+        if (typeof console !== "undefined" && console.error) console.error("[API] E003 (admin): server error", res.status);
+      } else message = `Ошибка ${res.status}`;
     }
     const err = new Error(message) as ApiError;
     err.status = res.status;
+    if (code) err.code = code;
     throw err;
   }
   return res.json();

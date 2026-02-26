@@ -13,11 +13,23 @@ import {
 } from "../../store/useTradingStore";
 import { SettledResultOverlay } from "../../components/SettledResultOverlay";
 import { ChartResultFeedback } from "../../components/ChartResultFeedback";
-import { apiFetch, authHeaders, isAuthError } from "../../lib/api";
+import { CompletedTrades } from "../../components/CompletedTrades";
+import { PairSelectDropdown } from "../../components/PairSelectDropdown";
+import { apiFetch, authHeaders, isAuthError, getDisplayMessage } from "../../lib/api";
+import { useLocale } from "../../lib/i18n";
+
+function ChartLoadingFallback() {
+  const { t } = useLocale();
+  return (
+    <div className="min-h-[260px] sm:min-h-[320px] xl:min-h-[380px] w-full rounded-xl glass flex items-center justify-center text-slate-500 text-sm">
+      {t("trade.chartLoading")}
+    </div>
+  );
+}
 
 const PriceChart = dynamic(
   () => import("../../components/PriceChart").then((m) => ({ default: m.PriceChart })),
-  { ssr: false, loading: () => <div className="h-[380px] w-full rounded-xl glass flex items-center justify-center text-slate-500 text-sm">Загрузка графика…</div> }
+  { ssr: false, loading: () => <ChartLoadingFallback /> }
 );
 
 type MeResponse = {
@@ -43,6 +55,7 @@ type TradesResponse = {
 function TradePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t, locale } = useLocale();
   const token = useTradingStore((s) => s.token);
   const authChecked = useTradingStore((s) => s.authChecked);
   const user = useTradingStore((s) => s.user);
@@ -59,6 +72,7 @@ function TradePageContent() {
   const activeTrades = useTradingStore((s) => s.activeTrades);
   const completedTrades = useTradingStore((s) => s.completedTrades);
   const setPairs = useTradingStore((s) => s.setPairs);
+  const upsertPrice = useTradingStore((s) => s.upsertPrice);
   const setActiveTrades = useTradingStore((s) => s.setActiveTrades);
   const setCompletedTrades = useTradingStore((s) => s.setCompletedTrades);
   const chartSettings = useTradingStore((s) => s.chartSettings);
@@ -92,6 +106,9 @@ function TradePageContent() {
   const [duration, setDuration] = useState(60);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** На мобильных: какое выпадающее меню на графике открыто */
+  const [mobileChartMenu, setMobileChartMenu] = useState<"chart" | "timeframe" | "indicators" | null>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
   const timeframeToMs: Record<TimeframeKey, number> = useMemo(
     () => ({
       "30s": 30_000,
@@ -149,7 +166,7 @@ function TradePageContent() {
           clearAuth();
           router.replace("/login");
         } else {
-          setError((err as Error).message);
+          setError(getDisplayMessage(err, t));
         }
       }
     }
@@ -204,6 +221,44 @@ function TradePageContent() {
     }
   }, [pairs.length, searchParams, chartSettings.selectedPairId, router, setChartSettings]);
 
+  // Скролл к блоку «История» при переходе по ссылке /trade#history (нижнее меню на мобильных)
+  useEffect(() => {
+    if (typeof window === "undefined" || window.location.hash !== "#history") return;
+    const el = document.getElementById("history");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  // Закрытие выпадающих меню на графике (мобильные) по клику снаружи
+  useEffect(() => {
+    if (mobileChartMenu == null) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (mobileMenuRef.current?.contains(e.target as Node)) return;
+      setMobileChartMenu(null);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [mobileChartMenu]);
+
+  // Резервный опрос цен по API (если WebSocket не доставляет обновления — график всё равно обновляется)
+  useEffect(() => {
+    if (!authChecked || selectedPairId == null || !token) return;
+    const POLL_MS = 2000;
+    const t = setInterval(async () => {
+      try {
+        const { pairs: nextPairs } = await apiFetch<PairsResponse>("/trading-pairs", {
+          headers: authHeaders(token)
+        });
+        const pair = nextPairs?.find((p) => p.id === selectedPairId);
+        if (pair && Number.isFinite(Number(pair.currentPrice))) {
+          upsertPrice(selectedPairId, Number(pair.currentPrice));
+        }
+      } catch {
+        // ignore
+      }
+    }, POLL_MS);
+    return () => clearInterval(t);
+  }, [authChecked, selectedPairId, token, upsertPrice]);
+
   // Подтягиваем историю свечей OHLC при загрузке и при смене пары/таймфрейма
   useEffect(() => {
     if (!authChecked || selectedPairId == null) {
@@ -248,8 +303,8 @@ function TradePageContent() {
         if (!cancelled) {
           const msg =
             (e as Error)?.name === "AbortError"
-              ? "Таймаут загрузки графика"
-              : (e as Error)?.message || "Ошибка загрузки графика";
+              ? t("trade.chartTimeout")
+              : (e as Error)?.message || t("trade.chartError");
           setCandlesError(msg);
           setCandles([]);
         }
@@ -263,7 +318,7 @@ function TradePageContent() {
       if (timeoutId) clearTimeout(timeoutId);
       setCandlesLoading(false);
     };
-  }, [authChecked, token, selectedPairId, timeframe, candleLimitFor5h]);
+  }, [authChecked, token, selectedPairId, timeframe, candleLimitFor5h, t]);
 
   // Throttle: обновляем график по тикам не чаще чем раз в 120ms (меньше лишних ре-рендеров)
   const lastCandleUpdateRef = useRef<number>(0);
@@ -381,7 +436,7 @@ function TradePageContent() {
         setAuth(token ?? null, { ...user, demoBalance: res.balance });
       }
     } catch (err) {
-      setError((err as Error).message);
+      setError(getDisplayMessage(err, t));
     } finally {
       setPlacing(false);
     }
@@ -401,41 +456,64 @@ function TradePageContent() {
     <AuthGuard>
       <WebSocketBridge />
       <SettledResultOverlay />
-      <div className="flex flex-1 flex-col min-h-0 gap-6 mt-4">
-        {/* Верхняя часть: график + ордер — занимает доступное место */}
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] gap-6 min-h-[480px] flex-1 items-stretch">
-          {/* Левая часть — пара + график */}
-          <div className="flex flex-col gap-4 min-h-0 min-w-0 overflow-hidden flex-1 glass p-5 sm:p-6 animate-fade-in-up stagger-1 opacity-0 transition-shadow duration-300 hover:shadow-soft-glow/30">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                {quickPairs.length > 0 ? (
-                  quickPairs.map((pair) => (
-                    <button
-                      key={pair.id}
-                      type="button"
-                      onClick={() => {
+      <div className="flex flex-1 flex-col min-h-0 gap-0 xl:gap-6 mt-2 xl:mt-4 pb-[env(safe-area-inset-bottom,0px)]">
+        {/* Верхняя часть: график + ордер. На мобильных: ордер наезжает на график снизу и всегда виден */}
+        <div className="relative grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] gap-0 xl:gap-6 min-h-0 xl:min-h-[480px] flex-1 items-stretch">
+          {/* Левая часть — пара + график. На мобильных без рамки, график во всю ширину */}
+          <div className="flex flex-col gap-2 xl:gap-4 min-h-0 min-w-0 overflow-hidden flex-1 rounded-none border-0 bg-transparent p-2 -mx-2 xl:mx-0 xl:glass xl:rounded-2xl xl:p-6 animate-fade-in-up stagger-1 opacity-0 transition-shadow duration-300 xl:hover:shadow-soft-glow/30">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                {/* Мобильные: полный выбор пары (перенесён из шапки) */}
+                <div className="flex md:hidden min-w-0 flex-1">
+                  {pairs.length > 0 ? (
+                    <PairSelectDropdown
+                      pairs={pairs}
+                      selectedPair={selectedPair ?? null}
+                      onSelectPair={(pair) => {
                         setChartSettings({ selectedPairId: pair.id });
                         addRecentPair(pair.id);
                         router.replace(`/trade?pairId=${pair.id}`, { scroll: false });
                       }}
-                      className={`chip text-xs font-mono ${
-                        selectedPair?.id === pair.id ? "chip-active" : ""
-                      }`}
-                    >
-                      {pair.symbol}
-                    </button>
-                  ))
-                ) : (
-                  <span className="text-[11px] text-slate-500">Выберите пару в шапке</span>
-                )}
+                      favoritePairIds={favoritePairIds}
+                      recentPairIds={recentPairIds}
+                      toggleFavoritePair={toggleFavoritePair}
+                      addRecentPair={addRecentPair}
+                    />
+                  ) : (
+                    <span className="text-[11px] text-slate-500">{t("trade.selectPairInHeader")}</span>
+                  )}
+                </div>
+                {/* ПК: 3 избранные/недавние пары */}
+                <div className="hidden md:flex items-center gap-2">
+                  {quickPairs.length > 0 ? (
+                    quickPairs.map((pair) => (
+                      <button
+                        key={pair.id}
+                        type="button"
+                        onClick={() => {
+                          setChartSettings({ selectedPairId: pair.id });
+                          addRecentPair(pair.id);
+                          router.replace(`/trade?pairId=${pair.id}`, { scroll: false });
+                        }}
+                        className={`chip text-xs font-mono min-h-[44px] min-w-[44px] flex items-center justify-center px-3 xl:min-h-0 xl:min-w-0 xl:px-2.5 xl:py-1 ${
+                          selectedPair?.id === pair.id ? "chip-active" : ""
+                        }`}
+                      >
+                        {pair.symbol}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="text-[11px] text-slate-500">{t("trade.selectPairInHeader")}</span>
+                  )}
+                </div>
               </div>
               {selectedPair && (
                 <div className="flex items-end gap-3">
                   <div className="flex flex-col items-end">
                     <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
-                      Текущая цена
+                      {t("trade.currentPrice")}
                     </span>
-                    <span className="text-xl font-semibold text-accent font-mono">
+                    <span className="text-lg sm:text-xl font-semibold text-accent font-mono tabular-nums">
                       {(() => {
                         const v = Number(selectedPair.currentPrice);
                         return Number.isNaN(v) ? "-" : v.toFixed(5);
@@ -445,44 +523,45 @@ function TradePageContent() {
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-between gap-4 text-xs text-slate-400">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] uppercase tracking-wide text-slate-500">
-                  График
+            {/* График (линия/свечи) + таймфрейм: только на ПК; на мобильных — выпадающие кнопки на графике */}
+            <div className="hidden xl:flex items-center gap-2 overflow-x-auto pb-1 -mx-1 sm:mx-0 surface-scroll sm:flex-wrap">
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500 shrink-0 hidden sm:inline">
+                  {t("trade.chart")}
                 </span>
-                <div className="inline-flex rounded-full glass p-0.5">
+                <div className="inline-flex rounded-full glass p-0.5 shrink-0">
                   <button
                     type="button"
-                    className={`chip ${
+                    className={`chip min-h-[36px] px-3 text-[11px] xl:min-h-0 xl:px-2.5 xl:py-1 ${
                       chartMode === "line"
                         ? "chip-active"
                         : ""
                     }`}
                     onClick={() => setChartSettings({ chartMode: "line" })}
                   >
-                    Линия
+                    {t("trade.line")}
                   </button>
                   <button
                     type="button"
-                    className={`chip ${
+                    className={`chip min-h-[36px] px-3 text-[11px] xl:min-h-0 xl:px-2.5 xl:py-1 ${
                       chartMode === "candles"
                         ? "chip-active"
                         : ""
                     }`}
                     onClick={() => setChartSettings({ chartMode: "candles" })}
                   >
-                    Свечи
+                    {t("trade.candles")}
                   </button>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
-                <span className="text-slate-500 shrink-0">Таймфрейм:</span>
-                <div className="flex flex-wrap gap-1">
+              <div className="flex items-center gap-1.5 shrink-0 border-l border-slate-700/50 pl-2">
+                <span className="text-[10px] sm:text-[11px] text-slate-500 shrink-0 hidden sm:inline">{t("trade.timeframe")}</span>
+                <div className="flex gap-1 shrink-0">
                   {TIMEFRAMES.map((tf) => (
                     <button
                       key={tf}
                       type="button"
-                      className={`chip ${
+                      className={`chip min-h-[36px] min-w-[36px] flex items-center justify-center text-[11px] shrink-0 xl:min-h-0 xl:min-w-0 xl:shrink ${
                         timeframe === tf
                           ? "chip-active"
                           : ""
@@ -502,8 +581,8 @@ function TradePageContent() {
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11px]">
-              <span className="text-slate-500 shrink-0">Индикаторы:</span>
+            <div className="hidden xl:flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] surface-scroll shrink-0">
+              <span className="text-slate-500 shrink-0">{t("trade.indicators")}</span>
               {[
                 { key: "ma" as const, label: "MA", on: showMA, set: (v: boolean) => setChartSettings({ showMA: v }) },
                 { key: "rsi" as const, label: "RSI", on: showRSI, set: (v: boolean) => setChartSettings({ showRSI: v }) },
@@ -513,7 +592,7 @@ function TradePageContent() {
                 <button
                   key={label}
                   type="button"
-                  className={`chip ${
+                  className={`chip min-h-[34px] min-w-[34px] flex items-center justify-center shrink-0 xl:min-h-0 xl:min-w-0 ${
                     on
                       ? "chip-active"
                       : ""
@@ -524,7 +603,127 @@ function TradePageContent() {
                 </button>
               ))}
             </div>
-            <div className="mt-2 min-h-[380px] flex-1 w-full min-w-0 overflow-hidden flex flex-col relative">
+            {/* На мобильных — график без краёв; компактный отступ снизу, панель ордера не загораживает */}
+            <div className="mt-1 xl:mt-2 min-h-[260px] sm:min-h-[320px] xl:min-h-[380px] flex-1 w-full min-w-0 overflow-x-auto overflow-y-hidden xl:overflow-hidden flex flex-col relative surface-scroll pb-[130px] xl:pb-0">
+              {/* Мобильные: выпадающие кнопки поверх графика (тип графика, таймфрейм, индикаторы) */}
+              <div
+                ref={mobileMenuRef}
+                className="xl:hidden absolute top-2 left-2 z-20 flex flex-wrap gap-2 pointer-events-none [&>*]:pointer-events-auto"
+              >
+                {/* Тип графика */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setMobileChartMenu((m) => (m === "chart" ? null : "chart"))}
+                    className="flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-slate-800/90 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation"
+                  >
+                    <span className="text-slate-400 text-xs">{t("trade.chart")}</span>
+                    <span>{chartMode === "line" ? t("trade.line") : t("trade.candles")}</span>
+                    <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {mobileChartMenu === "chart" && (
+                    <div className="absolute top-full left-0 mt-1 min-w-[140px] py-1 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 shadow-xl z-30">
+                      <button
+                        type="button"
+                        onClick={() => { setChartSettings({ chartMode: "line" }); setMobileChartMenu(null); }}
+                        className={`w-full text-left px-3 py-2.5 text-sm ${chartMode === "line" ? "text-emerald-400 font-medium" : "text-slate-300"}`}
+                      >
+                        {t("trade.line")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setChartSettings({ chartMode: "candles" }); setMobileChartMenu(null); }}
+                        className={`w-full text-left px-3 py-2.5 text-sm ${chartMode === "candles" ? "text-emerald-400 font-medium" : "text-slate-300"}`}
+                      >
+                        {t("trade.candles")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {/* Таймфрейм */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setMobileChartMenu((m) => (m === "timeframe" ? null : "timeframe"))}
+                    className="flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-slate-800/90 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation"
+                  >
+                    <span className="text-slate-400 text-xs">{t("trade.timeframe")}</span>
+                    <span>
+                      {timeframe === "30s" && "30с"}
+                      {timeframe === "1m" && "1м"}
+                      {timeframe === "5m" && "5м"}
+                      {timeframe === "10m" && "10м"}
+                      {timeframe === "15m" && "15м"}
+                      {timeframe === "1h" && "1ч"}
+                      {timeframe === "2h" && "2ч"}
+                      {timeframe === "5h" && "5ч"}
+                    </span>
+                    <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {mobileChartMenu === "timeframe" && (
+                    <div className="absolute top-full left-0 mt-1 min-w-[100px] py-1 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 shadow-xl z-30 max-h-[60vh] overflow-y-auto">
+                      {TIMEFRAMES.map((tf) => (
+                        <button
+                          key={tf}
+                          type="button"
+                          onClick={() => { setChartSettings({ timeframe: tf }); setMobileChartMenu(null); }}
+                          className={`w-full text-left px-3 py-2.5 text-sm ${timeframe === tf ? "text-emerald-400 font-medium" : "text-slate-300"}`}
+                        >
+                          {tf === "30s" && "30с"}
+                          {tf === "1m" && "1м"}
+                          {tf === "5m" && "5м"}
+                          {tf === "10m" && "10м"}
+                          {tf === "15m" && "15м"}
+                          {tf === "1h" && "1ч"}
+                          {tf === "2h" && "2ч"}
+                          {tf === "5h" && "5ч"}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Индикаторы */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setMobileChartMenu((m) => (m === "indicators" ? null : "indicators"))}
+                    className="flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-slate-800/90 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation"
+                  >
+                    <span className="text-slate-400 text-xs">{t("trade.indicators")}</span>
+                    <span>
+                      {[showMA && "MA", showRSI && "RSI", showMACD && "MACD", showBB && "BB"].filter(Boolean).join(", ") || "—"}
+                    </span>
+                    <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {mobileChartMenu === "indicators" && (
+                    <div className="absolute top-full left-0 mt-1 min-w-[140px] py-1 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 shadow-xl z-30">
+                      {[
+                        { key: "ma" as const, label: "MA", on: showMA, set: (v: boolean) => setChartSettings({ showMA: v }) },
+                        { key: "rsi" as const, label: "RSI", on: showRSI, set: (v: boolean) => setChartSettings({ showRSI: v }) },
+                        { key: "macd" as const, label: "MACD", on: showMACD, set: (v: boolean) => setChartSettings({ showMACD: v }) },
+                        { key: "bb" as const, label: "BB", on: showBB, set: (v: boolean) => setChartSettings({ showBB: v }) }
+                      ].map(({ label, on, set }) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => { set(!on); }}
+                          className={`w-full text-left px-3 py-2.5 text-sm flex items-center justify-between ${on ? "text-emerald-400 font-medium" : "text-slate-300"}`}
+                        >
+                          {label}
+                          {on && <span className="text-emerald-400">✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="min-w-[min(100%,800px)] xl:min-w-0 h-full flex flex-col">
               <PriceChart
                 candles={candles}
                 markers={markers}
@@ -535,6 +734,7 @@ function TradePageContent() {
                 showRSI={showRSI}
                 showMACD={showMACD}
                 showBB={showBB}
+                containerClassName="rounded-none bg-transparent border-0 shadow-none xl:rounded-xl xl:glass"
               />
               {lastSettledResult && (
                 <ChartResultFeedback
@@ -542,34 +742,84 @@ function TradePageContent() {
                   onDone={clearLastSettledResult}
                 />
               )}
+              </div>
             </div>
           </div>
 
-          {/* Правая часть — новый ордер (структурировано) + активные сделки */}
-          <div className="flex flex-col gap-5 min-h-0 animate-fade-in-up stagger-2 opacity-0">
-            {/* Карточка: новый ордер */}
-            <div className="flex flex-col gap-5 shrink-0 glass p-6 transition-shadow duration-300 hover:shadow-soft-glow/20">
-              <div className="flex items-center justify-between gap-4 pb-3">
-                <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Новый ордер
+          {/* Правая часть. На мобильных: ордер внизу (фиксирован), активные сделки сверху (max 5 рядов + горизонтальный скролл) */}
+          <div className="flex flex-col-reverse xl:flex-col gap-4 xl:gap-5 min-h-0 max-h-[75vh] xl:max-h-none animate-fade-in-up stagger-2 opacity-0 absolute bottom-0 left-0 right-0 z-10 xl:static xl:z-0 overflow-hidden xl:overflow-visible">
+            {/* Новый ордер — на мобильных внизу (flex-col-reverse), на ПК сверху */}
+            <div className="flex flex-col gap-2 xl:gap-5 shrink-0 rounded-b-2xl xl:rounded-2xl p-3 xl:p-6 transition-shadow duration-300 xl:hover:shadow-soft-glow/20 bg-slate-900/90 backdrop-blur-md border border-slate-700/50 border-t-0 xl:border-t xl:border-b-0 xl:bg-transparent xl:backdrop-blur-none xl:border xl:border-slate-700/50 xl:glass">
+              <div className="flex items-center justify-between gap-2 xl:gap-3 pb-1 xl:pb-3">
+                <div className="min-w-0 flex items-center gap-2">
+                  <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 xl:text-xs xl:text-slate-400">
+                    {t("trade.newOrder")}
                   </h3>
-                  <p className="text-sm font-medium text-slate-200 mt-0.5">
-                    {selectedPair ? selectedPair.name : "Выберите актив"}
+                  <p className="text-xs xl:text-sm font-medium text-slate-200 truncate">
+                    {selectedPair ? selectedPair.name : t("trade.selectAsset")}
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500">Баланс</p>
-                  <p className="text-base font-semibold text-accent font-mono">
+                <div className="text-right shrink-0">
+                  <p className="text-[10px] uppercase tracking-wider text-slate-500">{t("trade.balance")}</p>
+                  <p className="text-sm xl:text-base font-semibold text-accent font-mono tabular-nums">
                     ${formatBalance(user?.demoBalance)}
                   </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-5">
-                <div>
-                  <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-500 mb-2.5">
-                    Сумма сделки
+              <div className="grid grid-cols-1 gap-2 xl:gap-5">
+                {/* Мобильные: сумма, время, кнопки LONG/SHORT — всегда видны */}
+                <div className="xl:hidden flex flex-col gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <label className="text-[10px] text-slate-500 shrink-0">$</label>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={amount}
+                        onChange={(e) =>
+                          setAmount(Math.max(1, Number(e.target.value) || 1))
+                        }
+                        className="w-14 input-glass py-2 text-sm font-mono min-h-[40px]"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <input
+                        type="number"
+                        min={60}
+                        step={15}
+                        value={duration}
+                        onChange={(e) =>
+                          setDuration(Math.max(60, Number(e.target.value) || 60))
+                        }
+                        className="w-12 input-glass py-2 text-sm font-mono min-h-[40px]"
+                      />
+                      <span className="text-slate-500 text-[10px] shrink-0">{t("trade.sec")}</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg min-h-[44px] py-2.5 text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 touch-manipulation"
+                      disabled={placing}
+                      onClick={() => place("LONG")}
+                    >
+                      LONG ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-lg min-h-[44px] py-2.5 text-sm font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 touch-manipulation"
+                      disabled={placing}
+                      onClick={() => place("SHORT")}
+                    >
+                      SHORT ↓
+                    </button>
+                  </div>
+                </div>
+                <div className="hidden xl:block">
+                  <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-500 mb-2">
+                    {t("trade.amountLabel")}
                   </label>
                   <div className="flex flex-wrap items-center gap-2">
                     <input
@@ -580,15 +830,15 @@ function TradePageContent() {
                       onChange={(e) =>
                         setAmount(Math.max(1, Number(e.target.value) || 1))
                       }
-                      className="w-24 input-glass py-2.5 text-sm font-mono"
+                      className="w-20 sm:w-24 input-glass py-3 xl:py-2.5 text-base xl:text-sm font-mono min-h-[48px] xl:min-h-0"
                     />
-                    <div className="flex gap-1.5">
+                    <div className="flex flex-wrap gap-2">
                       {[1, 5, 10, 25, 50].map((v) => (
                         <button
                           key={v}
                           type="button"
                           onClick={() => setAmount(v)}
-                          className={`chip rounded-lg px-3 py-2 text-xs font-medium ${
+                          className={`chip rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-2.5 xl:min-h-0 xl:min-w-0 text-sm xl:text-xs font-medium ${
                             amount === v
                               ? "chip-active"
                               : ""
@@ -601,9 +851,9 @@ function TradePageContent() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-500 mb-2.5">
-                    Экспирация
+                <div className="hidden xl:block">
+                  <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-500 mb-2">
+                    {t("trade.expiryLabel")}
                   </label>
                   <div className="flex flex-wrap items-center gap-2">
                     <input
@@ -614,16 +864,16 @@ function TradePageContent() {
                       onChange={(e) =>
                         setDuration(Math.max(60, Number(e.target.value) || 60))
                       }
-                      className="w-24 input-glass py-2.5 text-sm font-mono"
+                      className="w-20 sm:w-24 input-glass py-3 xl:py-2.5 text-base xl:text-sm font-mono min-h-[48px] xl:min-h-0"
                     />
-                    <span className="text-slate-500 text-xs">сек</span>
-                    <div className="flex gap-1.5">
+                    <span className="text-slate-500 text-xs">{t("trade.sec")}</span>
+                    <div className="flex flex-wrap gap-2">
                       {[60, 120, 180].map((v) => (
                         <button
                           key={v}
                           type="button"
                           onClick={() => setDuration(v)}
-                          className={`chip rounded-lg px-3 py-2 text-xs font-medium ${
+                          className={`chip rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-2.5 xl:min-h-0 xl:min-w-0 text-sm xl:text-xs font-medium ${
                             duration === v
                               ? "chip-active"
                               : ""
@@ -636,10 +886,10 @@ function TradePageContent() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pt-2">
+                <div className="hidden xl:grid grid-cols-2 gap-3 pt-2">
                   <button
                     type="button"
-                    className="rounded-xl py-3 text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.25)] transition-all active:scale-[0.98]"
+                    className="rounded-xl min-h-[52px] xl:min-h-0 py-4 xl:py-3 text-base xl:text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.25)] transition-all active:scale-[0.98] touch-manipulation"
                     disabled={placing}
                     onClick={() => place("LONG")}
                   >
@@ -647,7 +897,7 @@ function TradePageContent() {
                   </button>
                   <button
                     type="button"
-                    className="rounded-xl py-3 text-sm font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 shadow-[0_0_20px_rgba(249,115,22,0.25)] transition-all active:scale-[0.98]"
+                    className="rounded-xl min-h-[52px] xl:min-h-0 py-4 xl:py-3 text-base xl:text-sm font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 shadow-[0_0_20px_rgba(249,115,22,0.25)] transition-all active:scale-[0.98] touch-manipulation"
                     disabled={placing}
                     onClick={() => place("SHORT")}
                   >
@@ -657,7 +907,7 @@ function TradePageContent() {
 
                 {selectedPair && (
                   <p className="text-[11px] text-slate-500 text-center">
-                    Цена входа{" "}
+                    {t("trade.entryPrice")}{" "}
                     <span className="font-mono text-slate-300">
                       {Number(selectedPair.currentPrice).toFixed(5)}
                     </span>
@@ -670,14 +920,15 @@ function TradePageContent() {
                 )}
               </div>
             </div>
-
-            {/* Активные сделки — в той же колонке под ордером */}
-            <ActiveTrades />
+            {/* Активные сделки — на мобильных: одна полоса, карточки уходят вправо со скроллом (не двигают ордер) */}
+            <div className="shrink-0 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:overflow-visible">
+              <ActiveTrades />
+            </div>
           </div>
         </div>
 
-        {/* История сделок — на 100% ширины экрана (full bleed) */}
-        <div className="shrink-0 mt-auto w-screen relative left-1/2 right-1/2 -translate-x-1/2 overflow-x-hidden">
+        {/* История сделок — только на ПК; на мобильных отдельная страница /history */}
+        <div id="history" className="hidden xl:block shrink-0 mt-auto w-screen relative left-1/2 right-1/2 -translate-x-1/2 overflow-x-hidden scroll-mt-4">
           <div className="w-full px-4 sm:px-6 lg:px-8">
             <CompletedTrades />
           </div>
@@ -688,13 +939,14 @@ function TradePageContent() {
 }
 
 function ActiveTrades() {
+  const { t } = useLocale();
   const active = useTradingStore((s) => s.activeTrades);
 
   return (
-    <div className="flex flex-col min-h-0 flex-1 glass p-5 sm:p-6">
+    <div className="flex flex-col min-h-0 flex-1 glass rounded-t-2xl xl:rounded-b-2xl p-4 xl:p-6">
       <div className="flex items-center justify-between mb-3 shrink-0">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-          Активные сделки
+          {t("trade.activeTradesTitle")}
         </h2>
         {active.length > 0 && (
           <span className="text-[10px] text-slate-500">{active.length}</span>
@@ -703,54 +955,86 @@ function ActiveTrades() {
 
       {active.length === 0 ? (
         <div className="text-xs text-slate-500 py-4 text-center">
-          Нет активных. Откройте LONG или SHORT выше.
+          {t("trade.noActiveHint")}
         </div>
       ) : (
-        <div className="min-h-0 overflow-auto rounded-lg bg-slate-950/40 surface-scroll">
-          <table className="min-w-full text-[11px]">
-            <thead className="sticky top-0 z-10 glass-strong rounded-none text-[10px] uppercase tracking-wider text-slate-500 border-b border-white/5">
-              <tr>
-                <th className="px-3 py-2.5 text-left font-medium">Пара</th>
-                <th className="px-3 py-2.5 text-right font-medium">$</th>
-                <th className="px-3 py-2.5 text-right font-medium">До эксп.</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/80">
-              {active.map((t) => (
-                <tr key={t.id} className="hover:bg-slate-800/50">
-                  <td className="px-3 py-2.5 align-middle">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-slate-100">
-                        {t.tradingPair?.symbol ?? t.tradingPairId}
-                      </span>
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                          t.direction === "LONG"
-                            ? "bg-emerald-500/15 text-emerald-400"
-                            : "bg-orange-500/15 text-orange-400"
-                        }`}
-                      >
-                        {t.direction}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-slate-300">
-                    ${Number(t.amount).toFixed(0)}
-                  </td>
-                  <td className="px-3 py-2.5 text-right">
-                    <Countdown expiresAt={t.expiresAt} compact />
-                  </td>
-                </tr>
+        <>
+          {/* Мобильные: одна полоса, карточки уходят вправо за экран со скроллом */}
+          <div className="xl:hidden overflow-x-auto overflow-y-hidden rounded-lg bg-slate-950/40 surface-scroll -mx-1 px-1">
+            <div className="flex gap-2 pb-2">
+              {active.map((trade) => (
+                <div
+                  key={trade.id}
+                  className="flex shrink-0 items-center gap-2 py-2 px-3 rounded-lg bg-slate-800/60 min-h-[44px]"
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="font-mono text-slate-100 text-[11px] truncate">
+                      {trade.tradingPair?.symbol ?? trade.tradingPairId}
+                    </span>
+                    <span
+                      className={`px-1 py-0.5 rounded text-[9px] font-medium shrink-0 ${
+                        trade.direction === "LONG"
+                          ? "bg-emerald-500/15 text-emerald-400"
+                          : "bg-orange-500/15 text-orange-400"
+                      }`}
+                    >
+                      {trade.direction}
+                    </span>
+                  </div>
+                  <span className="font-mono text-slate-300 text-[10px] shrink-0">${Number(trade.amount).toFixed(0)}</span>
+                  <Countdown expiresAt={trade.expiresAt} compact />
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          </div>
+          {/* ПК: обычная таблица */}
+          <div className="hidden xl:block min-h-0 overflow-auto rounded-lg bg-slate-950/40 surface-scroll">
+            <table className="min-w-full text-[11px]">
+              <thead className="sticky top-0 z-10 glass-strong rounded-none text-[10px] uppercase tracking-wider text-slate-500 border-b border-white/5">
+                <tr>
+                  <th className="px-3 py-2.5 text-left font-medium">{t("trade.pair")}</th>
+                  <th className="px-3 py-2.5 text-right font-medium">$</th>
+                  <th className="px-3 py-2.5 text-right font-medium">{t("trade.untilExpiry")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/80">
+                {active.map((tr) => (
+                  <tr key={tr.id} className="hover:bg-slate-800/50 min-h-[44px]">
+                    <td className="px-3 py-2.5 align-middle">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-slate-100">
+                          {tr.tradingPair?.symbol ?? tr.tradingPairId}
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                            tr.direction === "LONG"
+                              ? "bg-emerald-500/15 text-emerald-400"
+                              : "bg-orange-500/15 text-orange-400"
+                          }`}
+                        >
+                          {tr.direction}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-right font-mono text-slate-300">
+                      ${Number(tr.amount).toFixed(0)}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <Countdown expiresAt={tr.expiresAt} compact />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
 function Countdown({ expiresAt, compact = false }: { expiresAt: string; compact?: boolean }) {
+  const { t } = useLocale();
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -774,143 +1058,8 @@ function Countdown({ expiresAt, compact = false }: { expiresAt: string; compact?
 
   return (
     <div className="text-[11px] text-slate-300">
-      До экспирации{" "}
+      {t("trade.untilExpiryFull")}{" "}
       <span className="font-mono text-accent">{diff.toString()} c</span>
-    </div>
-  );
-}
-
-function formatTradeTime(iso: string) {
-  const d = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  const diffH = Math.floor(diffMin / 60);
-  const diffD = Math.floor(diffH / 24);
-  if (diffMin < 1) return "только что";
-  if (diffMin < 60) return `${diffMin} мин назад`;
-  if (diffH < 24) return `${diffH} ч назад`;
-  if (diffD === 1) return "вчера";
-  if (diffD < 7) return `${diffD} дн. назад`;
-  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-function CompletedTrades() {
-  const completed = useTradingStore((s) => s.completedTrades);
-
-  return (
-    <div className="w-full glass overflow-hidden">
-      <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-white/5">
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-800/80">
-            <svg className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-            </svg>
-          </span>
-          <div>
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-              История сделок
-            </h2>
-            <p className="text-[10px] text-slate-500 mt-0.5">
-              Завершённые ордера
-            </p>
-          </div>
-        </div>
-        {completed.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="rounded-md bg-slate-800/80 px-2.5 py-1 text-[10px] font-medium text-slate-400 font-mono">
-              {completed.length}
-            </span>
-            <span className="text-[10px] text-slate-500">записей</span>
-          </div>
-        )}
-      </div>
-
-      {completed.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 px-6">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-800/60 mb-3">
-            <svg className="h-6 w-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          </div>
-          <p className="text-sm font-medium text-slate-400">Завершённых сделок пока нет</p>
-          <p className="text-xs text-slate-500 mt-1">Откройте LONG или SHORT — здесь появятся результаты</p>
-        </div>
-      ) : (
-        <div className="h-[240px] overflow-y-auto overflow-x-auto surface-scroll">
-          <table className="min-w-full text-[11px]">
-            <thead className="sticky top-0 z-10 glass-strong rounded-none text-[10px] uppercase tracking-wider text-slate-500 border-b border-white/5">
-              <tr>
-                <th className="px-5 py-3 text-left font-medium w-24">Время</th>
-                <th className="px-5 py-3 text-left font-medium">Пара</th>
-                <th className="px-5 py-3 text-left font-medium">Направление</th>
-                <th className="px-5 py-3 text-right font-medium">Сумма</th>
-                <th className="px-5 py-3 text-right font-medium">Вход</th>
-                <th className="px-5 py-3 text-right font-medium">Выход</th>
-                <th className="px-5 py-3 text-right font-medium">P/L</th>
-                <th className="px-5 py-3 text-right font-medium w-20">Результат</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {completed.map((t, i) => {
-                const isWin = t.status === "WIN";
-                const pnl = isWin ? Number(t.amount) : -Number(t.amount);
-                return (
-                  <tr
-                    key={t.id}
-                    className={`transition-colors hover:bg-slate-800/50 ${
-                      i % 2 === 0 ? "bg-slate-950/30" : "bg-slate-950/50"
-                    }`}
-                  >
-                    <td className="px-5 py-3 text-slate-500 whitespace-nowrap">
-                      {formatTradeTime(t.expiresAt)}
-                    </td>
-                    <td className="px-5 py-3 font-mono font-medium text-slate-100">
-                      {t.tradingPair?.symbol ?? t.tradingPairId}
-                    </td>
-                    <td className="px-5 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                          t.direction === "LONG"
-                            ? "bg-emerald-500/15 text-emerald-400"
-                            : "bg-orange-500/15 text-orange-400"
-                        }`}
-                      >
-                        {t.direction === "LONG" ? "↑" : "↓"} {t.direction}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-right font-mono text-slate-200">
-                      ${Number(t.amount).toFixed(2)}
-                    </td>
-                    <td className="px-5 py-3 text-right font-mono text-slate-400 tabular-nums">
-                      {Number(t.entryPrice).toFixed(5)}
-                    </td>
-                    <td className="px-5 py-3 text-right font-mono text-slate-400 tabular-nums">
-                      {t.closePrice != null ? Number(t.closePrice).toFixed(5) : "—"}
-                    </td>
-                    <td className="px-5 py-3 text-right font-mono font-semibold tabular-nums">
-                      <span className={isWin ? "text-emerald-400" : "text-red-400"}>
-                        {isWin ? "+" : ""}${pnl.toFixed(2)}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3 text-right">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold ${
-                            isWin
-                              ? "bg-emerald-500/25 text-emerald-400"
-                              : "bg-red-500/25 text-red-400"
-                        }`}
-                      >
-                        {isWin ? "✓ WIN" : "✕ LOSS"}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
     </div>
   );
 }

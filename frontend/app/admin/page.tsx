@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { AuthGuard } from "../../components/AuthGuard";
 import { useTradingStore } from "../../store/useTradingStore";
 import { apiFetch, authHeaders, isAuthError } from "../../lib/api";
+import { useLocale } from "../../lib/i18n";
 
 type AdminUser = {
   id: number;
@@ -24,10 +25,16 @@ type TradingPairRow = {
   currentPrice: number;
 };
 
-type AdminTab = "users" | "pairs";
+type AdminTab = "users" | "pairs" | "referral";
+
+type ReferralSettings = {
+  viaManager: boolean;
+  managerTelegram: string;
+};
 
 export default function AdminPage() {
   const router = useRouter();
+  const { t } = useLocale();
   const user = useTradingStore((s) => s.user);
   const authChecked = useTradingStore((s) => s.authChecked);
   const token = useTradingStore((s) => s.token);
@@ -50,6 +57,14 @@ export default function AdminPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  // Referral settings
+  const [referralSettings, setReferralSettings] = useState<ReferralSettings>({
+    viaManager: false,
+    managerTelegram: ""
+  });
+  const [referralLoading, setReferralLoading] = useState(false);
+  const [referralSaving, setReferralSaving] = useState(false);
 
   useEffect(() => {
     if (!authChecked) return;
@@ -84,6 +99,37 @@ export default function AdminPage() {
         .finally(() => setPairsLoading(false));
     }
   }, [authChecked, user?.isAdmin, token, activeTab]);
+
+  useEffect(() => {
+    if (!authChecked || !user?.isAdmin || !token) return;
+    if (activeTab === "referral") {
+      setReferralLoading(true);
+      apiFetch<ReferralSettings>("/admin/settings/referral", { headers: authHeaders(token) })
+        .then(setReferralSettings)
+        .catch(() => {})
+        .finally(() => setReferralLoading(false));
+    }
+  }, [authChecked, user?.isAdmin, token, activeTab]);
+
+  async function saveReferralSettings() {
+    if (!token) return;
+    setReferralSaving(true);
+    try {
+      const data = await apiFetch<ReferralSettings>("/admin/settings/referral", {
+        method: "PATCH",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          withdrawViaManager: referralSettings.viaManager,
+          managerTelegram: referralSettings.managerTelegram
+        })
+      });
+      setReferralSettings(data);
+    } catch {
+      // ignore
+    } finally {
+      setReferralSaving(false);
+    }
+  }
 
   async function setUserBlock(
     targetId: number,
@@ -120,7 +166,7 @@ export default function AdminPage() {
         router.replace("/login");
         return;
       }
-      setUsersError((err as Error)?.message ?? "Ошибка");
+      setUsersError((err as Error)?.message ?? t("admin.error"));
     } finally {
       setActingUserId(null);
     }
@@ -131,7 +177,7 @@ export default function AdminPage() {
     setMessage(null);
     const price = parseFloat(currentPrice);
     if (!symbol.trim() || !name.trim() || !Number.isFinite(price) || price <= 0) {
-      setMessage({ type: "err", text: "Заполните символ, название и положительную цену" });
+      setMessage({ type: "err", text: t("admin.fillPairFields") });
       return;
     }
     setSubmitting(true);
@@ -145,7 +191,7 @@ export default function AdminPage() {
           currentPrice: price
         })
       });
-      setMessage({ type: "ok", text: "Пара добавлена" });
+      setMessage({ type: "ok", text: t("admin.pairAdded") });
       setSymbol("");
       setName("");
       setCurrentPrice("");
@@ -161,7 +207,7 @@ export default function AdminPage() {
       }
       setMessage({
         type: "err",
-        text: (err as Error)?.message ?? "Ошибка добавления пары"
+        text: (err as Error)?.message ?? t("admin.errorAddPair")
       });
     } finally {
       setSubmitting(false);
@@ -195,14 +241,14 @@ export default function AdminPage() {
       <div className="max-w-4xl mx-auto mt-8">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-semibold mb-2">Админка</h1>
-            <p className="text-sm text-slate-500">Пользователи и торговые пары</p>
+            <h1 className="text-xl font-semibold mb-2">{t("admin.title")}</h1>
+            <p className="text-sm text-slate-500">{t("admin.subtitle")}</p>
           </div>
           <Link
             href="/admin/support"
             className="rounded-lg border border-slate-600 bg-slate-800/80 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-slate-700/80 transition-colors"
           >
-            Поддержка
+            {t("admin.support")}
           </Link>
         </div>
 
@@ -229,20 +275,31 @@ export default function AdminPage() {
           >
             Торговые пары
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("referral")}
+            className={`flex-1 rounded-lg py-2.5 px-4 text-sm font-semibold transition-all ${
+              activeTab === "referral"
+                ? "bg-surface text-slate-100 border border-slate-600/60"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            Реферальная программа
+          </button>
         </div>
 
         {activeTab === "users" && (
           <div className="card overflow-hidden">
             <div className="border-b border-slate-700/60 px-4 sm:px-6 py-3">
-              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Пользователи</h2>
-              <p className="text-sm text-slate-400 mt-0.5">Блокировки: полная (торги и вывод) или только вывод</p>
+              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{t("admin.users")}</h2>
+              <p className="text-sm text-slate-400 mt-0.5">{t("admin.usersHint")}</p>
             </div>
             {usersLoading ? (
-              <div className="py-12 text-center text-slate-500 text-sm">Загрузка…</div>
+              <div className="py-12 text-center text-slate-500 text-sm">{t("admin.loading")}</div>
             ) : usersError ? (
               <div className="py-8 px-4 text-center text-red-400 text-sm">{usersError}</div>
             ) : users.length === 0 ? (
-              <div className="py-10 px-4 text-center text-slate-500 text-sm">Нет пользователей</div>
+              <div className="py-10 px-4 text-center text-slate-500 text-sm">{t("admin.noUsers")}</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[640px] text-sm">
@@ -250,8 +307,8 @@ export default function AdminPage() {
                     <tr>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">ID</th>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">Email</th>
-                      <th className="px-4 py-3 text-left text-slate-500 font-medium">Статус</th>
-                      <th className="px-4 py-3 text-right text-slate-500 font-medium">Действия</th>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">{t("admin.status")}</th>
+                      <th className="px-4 py-3 text-right text-slate-500 font-medium">{t("admin.actions")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
@@ -381,7 +438,7 @@ export default function AdminPage() {
                 <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Список пар</h2>
               </div>
               {pairsLoading ? (
-                <div className="py-12 text-center text-slate-500 text-sm">Загрузка…</div>
+                <div className="py-12 text-center text-slate-500 text-sm">{t("admin.loading")}</div>
               ) : pairs.length === 0 ? (
                 <div className="py-10 px-4 text-center text-slate-500 text-sm">Нет пар</div>
               ) : (
@@ -423,6 +480,56 @@ export default function AdminPage() {
               )}
             </div>
           </>
+        )}
+
+        {activeTab === "referral" && (
+          <div className="card space-y-6">
+            <div className="border-b border-slate-700/60 pb-4">
+              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Вывод средств партнёров</h2>
+              <p className="text-sm text-slate-400 mt-1">
+                Если включено — партнёры не могут выводить средства автоматически, только через менеджера в Telegram.
+              </p>
+            </div>
+            {referralLoading ? (
+              <div className="py-8 text-center text-slate-500 text-sm">Загрузка…</div>
+            ) : (
+              <div className="space-y-4">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={referralSettings.viaManager}
+                    onChange={(e) =>
+                      setReferralSettings((s) => ({ ...s, viaManager: e.target.checked }))
+                    }
+                    className="rounded border-slate-600 bg-slate-800 text-accent focus:ring-accent/50"
+                  />
+                  <span className="text-slate-200">Вывод только через менеджера в Telegram</span>
+                </label>
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    Ссылка или username менеджера в Telegram
+                  </label>
+                  <input
+                    type="text"
+                    value={referralSettings.managerTelegram}
+                    onChange={(e) =>
+                      setReferralSettings((s) => ({ ...s, managerTelegram: e.target.value }))
+                    }
+                    placeholder="https://t.me/manager или @manager"
+                    className="w-full max-w-md rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm outline-none focus:border-accent"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={saveReferralSettings}
+                  disabled={referralSaving}
+                  className="btn-primary py-2.5 px-5 disabled:opacity-50"
+                >
+                  {referralSaving ? "Сохранение…" : "Сохранить"}
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </AuthGuard>
