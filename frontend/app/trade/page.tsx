@@ -19,18 +19,28 @@ import { PairSelectDropdown } from "../../components/PairSelectDropdown";
 import { apiFetch, authHeaders, isAuthError, getDisplayMessage } from "../../lib/api";
 import { useLocale } from "../../lib/i18n";
 
-function ChartLoadingFallback() {
-  const { t } = useLocale();
+function ChartSkeleton() {
   return (
-    <div className="min-h-[260px] sm:min-h-[320px] xl:min-h-[380px] w-full rounded-xl glass flex items-center justify-center text-slate-500 text-sm">
-      {t("trade.chartLoading")}
+    <div className="min-h-[260px] sm:min-h-[320px] xl:min-h-[380px] w-full rounded-xl overflow-hidden bg-slate-900/40 animate-pulse relative">
+      <div className="absolute inset-0 flex flex-col p-3">
+        <div className="h-4 w-24 rounded bg-slate-700/60 shrink-0" />
+        <div className="flex-1 flex items-end justify-around gap-1 px-2 pb-6">
+          {[40, 55, 45, 60, 50, 55, 45, 55, 48].map((h, i) => (
+            <div
+              key={i}
+              className="flex-1 max-w-4 rounded-t bg-slate-700/50 min-h-[20%]"
+              style={{ height: `${h}%` }}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
 const PriceChart = dynamic(
   () => import("../../components/PriceChart").then((m) => ({ default: m.PriceChart })),
-  { ssr: false, loading: () => <ChartLoadingFallback /> }
+  { ssr: false, loading: () => <ChartSkeleton /> }
 );
 
 type MeResponse = {
@@ -110,7 +120,12 @@ function TradePageContent() {
   const [error, setError] = useState<string | null>(null);
   /** На мобильных: какое выпадающее меню на графике открыто */
   const [mobileChartMenu, setMobileChartMenu] = useState<"chart" | "timeframe" | "indicators" | null>(null);
+  /** Панель ордера: false = развёрнута, true = свёрнута (только ручка + кнопки LONG/SHORT) */
+  const [mobileOrderCollapsed, setMobileOrderCollapsed] = useState(false);
+  /** Режим fullscreen графика (мобильные) */
+  const [chartFullscreen, setChartFullscreen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const orderSheetRef = useRef<HTMLDivElement>(null);
   const timeframeToMs: Record<TimeframeKey, number> = useMemo(
     () => ({
       "30s": 30_000,
@@ -473,13 +488,45 @@ function TradePageContent() {
     <AuthGuard>
       <WebSocketBridge />
       <SettledResultOverlay />
-      <div className="flex flex-1 flex-col min-h-0 gap-0 xl:gap-6 mt-2 xl:mt-4 pb-[env(safe-area-inset-bottom,0px)]">
+      {/* Fullscreen график (мобильные) */}
+      {chartFullscreen && (
+        <div className="xl:hidden fixed inset-0 z-50 bg-background flex flex-col">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-slate-800 shrink-0">
+            <span className="font-mono text-slate-200">{selectedPair?.symbol ?? "—"}</span>
+            <button
+              type="button"
+              onClick={() => setChartFullscreen(false)}
+              className="flex items-center justify-center w-10 h-10 rounded-lg glass text-slate-400 hover:text-slate-200 touch-manipulation"
+              aria-label={t("trade.exitFullscreen")}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 min-h-0 p-2">
+            <PriceChart
+              candles={candles}
+              markers={markers}
+              mode={chartMode}
+              loading={candlesLoading}
+              error={candlesError}
+              showMA={showMA}
+              showRSI={showRSI}
+              showMACD={showMACD}
+              showBB={showBB}
+              containerClassName="rounded-xl glass h-full"
+            />
+          </div>
+        </div>
+      )}
+      <div className="flex flex-1 flex-col min-h-0 gap-0 xl:gap-6 mt-1 sm:mt-2 xl:mt-4 pb-0 xl:pb-0">
         {/* Верхняя часть: график + ордер. На мобильных: ордер наезжает на график снизу и всегда виден */}
         <div className="relative grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] gap-0 xl:gap-6 min-h-0 xl:min-h-[480px] flex-1 items-stretch">
           {/* Левая часть — пара + график. На мобильных без рамки, график во всю ширину */}
-          <div className="flex flex-col gap-2 xl:gap-4 min-h-0 min-w-0 overflow-hidden flex-1 rounded-none border-0 bg-transparent p-2 -mx-2 xl:mx-0 xl:glass xl:rounded-2xl xl:p-6 animate-fade-in-up stagger-1 opacity-0 transition-shadow duration-300 xl:hover:shadow-soft-glow/30">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
+          <div className="flex flex-col gap-2 xl:gap-4 min-h-0 min-w-0 overflow-hidden flex-1 rounded-none border-0 bg-transparent px-2 sm:px-3 py-2 -mx-2 sm:-mx-1 xl:mx-0 xl:glass xl:rounded-2xl xl:p-6 animate-fade-in-up stagger-1 opacity-0 transition-shadow duration-300 xl:hover:shadow-soft-glow/30">
+            <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+              <div className="flex items-center gap-2 min-w-0 flex-1 basis-full sm:basis-auto">
                 {/* Мобильные: полный выбор пары (перенесён из шапки) */}
                 <div className="flex md:hidden min-w-0 flex-1">
                   {pairs.length > 0 ? (
@@ -525,12 +572,12 @@ function TradePageContent() {
                 </div>
               </div>
               {selectedPair && (
-                <div className="flex items-end gap-3">
-                  <div className="flex flex-col items-end">
+                <div className="flex items-end gap-2 sm:gap-3 shrink-0">
+                  <div className="flex flex-col items-end min-w-0">
                     <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
                       {t("trade.currentPrice")}
                     </span>
-                    <span className="text-lg sm:text-xl font-semibold text-accent font-mono tabular-nums">
+                    <span className="text-base sm:text-lg xl:text-xl font-semibold text-accent font-mono tabular-nums truncate max-w-[120px] sm:max-w-none">
                       {(() => {
                         const v = Number(selectedPair.currentPrice);
                         return Number.isNaN(v) ? "-" : v.toFixed(5);
@@ -621,18 +668,22 @@ function TradePageContent() {
               ))}
             </div>
             {/* На мобильных — график без краёв; компактный отступ снизу, панель ордера не загораживает */}
-            <div className="mt-1 xl:mt-2 min-h-[260px] sm:min-h-[320px] xl:min-h-[380px] flex-1 w-full min-w-0 overflow-x-auto overflow-y-hidden xl:overflow-hidden flex flex-col relative surface-scroll pb-[130px] xl:pb-0">
+            <div className={`mt-1 xl:mt-2 min-h-[220px] sm:min-h-[280px] xl:min-h-[380px] flex-1 w-full min-w-0 overflow-x-auto overflow-y-hidden xl:overflow-hidden flex flex-col relative surface-scroll transition-[padding-bottom] duration-300 ${
+              mobileOrderCollapsed
+                ? "pb-[calc(110px+env(safe-area-inset-bottom,0px))] xl:pb-0"
+                : "pb-[calc(200px+env(safe-area-inset-bottom,0px))] xl:pb-0"
+            }`}>
               {/* Мобильные: выпадающие кнопки поверх графика (тип графика, таймфрейм, индикаторы) */}
               <div
                 ref={mobileMenuRef}
-                className="xl:hidden absolute top-2 left-2 z-20 flex flex-wrap gap-2 pointer-events-none [&>*]:pointer-events-auto"
+                className="xl:hidden absolute top-2 left-2 right-2 z-20 flex flex-wrap gap-1.5 sm:gap-2 pointer-events-none [&>*]:pointer-events-auto"
               >
                 {/* Тип графика */}
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => setMobileChartMenu((m) => (m === "chart" ? null : "chart"))}
-                    className="flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-slate-800/90 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation"
+                    className="flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation active:scale-[0.98]"
                   >
                     <span className="text-slate-400 text-xs">{t("trade.chart")}</span>
                     <span>{chartMode === "line" ? t("trade.line") : t("trade.candles")}</span>
@@ -664,7 +715,7 @@ function TradePageContent() {
                   <button
                     type="button"
                     onClick={() => setMobileChartMenu((m) => (m === "timeframe" ? null : "timeframe"))}
-                    className="flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-slate-800/90 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation"
+                    className="flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation active:scale-[0.98]"
                   >
                     <span className="text-slate-400 text-xs">{t("trade.timeframe")}</span>
                     <span>
@@ -703,12 +754,23 @@ function TradePageContent() {
                     </div>
                   )}
                 </div>
+                {/* Fullscreen графика */}
+                <button
+                  type="button"
+                  onClick={() => setChartFullscreen(true)}
+                  className="flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation active:scale-[0.98]"
+                  aria-label={t("trade.fullscreenChart")}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                  </svg>
+                </button>
                 {/* Индикаторы */}
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => setMobileChartMenu((m) => (m === "indicators" ? null : "indicators"))}
-                    className="flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-slate-800/90 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation"
+                    className="flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation active:scale-[0.98]"
                   >
                     <span className="text-slate-400 text-xs">{t("trade.indicators")}</span>
                     <span>
@@ -763,73 +825,154 @@ function TradePageContent() {
             </div>
           </div>
 
-          {/* Правая часть. На мобильных: ордер внизу (фиксирован), активные сделки сверху (max 5 рядов + горизонтальный скролл) */}
-          <div className="flex flex-col-reverse xl:flex-col gap-4 xl:gap-5 min-h-0 max-h-[75vh] xl:max-h-none animate-fade-in-up stagger-2 opacity-0 absolute bottom-0 left-0 right-0 z-10 xl:static xl:z-0 overflow-hidden xl:overflow-visible">
-            {/* Новый ордер — на мобильных внизу (flex-col-reverse), на ПК сверху */}
-            <div className="flex flex-col gap-2 xl:gap-5 shrink-0 rounded-b-2xl xl:rounded-2xl p-3 xl:p-6 transition-shadow duration-300 xl:hover:shadow-soft-glow/20 bg-slate-900/90 backdrop-blur-md border border-slate-700/50 border-t-0 xl:border-t xl:border-b-0 xl:bg-transparent xl:backdrop-blur-none xl:border xl:border-slate-700/50 xl:glass">
-              <div className="flex items-center justify-between gap-2 xl:gap-3 pb-1 xl:pb-3">
-                <div className="min-w-0 flex items-center gap-2">
-                  <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 xl:text-xs xl:text-slate-400">
+          {/* Правая часть. На мобильных: ордер внизу (фиксирован), активные сделки сверху */}
+          <div
+            ref={orderSheetRef}
+            className="flex flex-col-reverse xl:flex-col gap-4 xl:gap-5 min-h-0 max-h-[75vh] xl:max-h-none animate-fade-in-up stagger-2 opacity-0 absolute bottom-0 left-0 right-0 z-10 xl:static xl:z-0 overflow-hidden xl:overflow-visible"
+          >
+            {/* Новый ордер — на мобильных: bottom sheet с ручкой; на ПК обычная панель */}
+            <div className="flex flex-col gap-2 xl:gap-5 shrink-0 rounded-t-2xl xl:rounded-2xl p-3 sm:p-4 xl:p-6 transition-shadow duration-300 xl:hover:shadow-soft-glow/20 bg-slate-900/97 backdrop-blur-md border border-slate-700/50 border-t border-slate-600/40 xl:border-t xl:border-b-0 xl:bg-transparent xl:backdrop-blur-none xl:border xl:border-slate-700/50 xl:glass shadow-[0_-4px_24px_rgba(0,0,0,0.3)] xl:shadow-none">
+              {/* Мобильные: ручка для сворачивания */}
+              <button
+                type="button"
+                onClick={() => setMobileOrderCollapsed((c) => !c)}
+                className="xl:hidden flex items-center justify-center py-2 -mt-1 -mx-2 touch-manipulation active:bg-slate-800/50 rounded-t-2xl transition-colors"
+                aria-label={mobileOrderCollapsed ? t("trade.expandOrder") : t("trade.collapseOrder")}
+              >
+                <div className="w-10 h-1 rounded-full bg-slate-600" />
+              </button>
+              {/* Заголовок и баланс: скрыты когда свёрнуто (мобильные) */}
+              <div className={`flex flex-wrap items-center justify-between gap-2 xl:gap-3 pb-1 xl:pb-3 ${mobileOrderCollapsed ? "hidden xl:flex" : ""}`}>
+                <div className="min-w-0 flex items-center gap-2 flex-1">
+                  <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 xl:text-xs xl:text-slate-400 shrink-0">
                     {t("trade.newOrder")}
                   </h3>
-                  <p className="text-xs xl:text-sm font-medium text-slate-200 truncate">
+                  <p className="text-xs xl:text-sm font-medium text-slate-200 truncate min-w-0">
                     {selectedPair ? selectedPair.name : t("trade.selectAsset")}
                   </p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-[10px] uppercase tracking-wider text-slate-500">{t("trade.balance")}</p>
-                  <p className="text-sm xl:text-base font-semibold text-accent font-mono tabular-nums">
+                  <p className="text-sm sm:text-base font-semibold text-accent font-mono tabular-nums truncate">
                     ${formatBalance(user?.demoBalance)}
                   </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-2 xl:gap-5">
-                {/* Мобильные: сумма, время, кнопки LONG/SHORT — всегда видны */}
-                <div className="xl:hidden flex flex-col gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="flex items-center gap-1.5 shrink-0">
+                {/* Мобильные: сумма, время, preset, кнопки LONG/SHORT */}
+                <div className="xl:hidden flex flex-col gap-3">
+                  {!mobileOrderCollapsed && (
+                  <>
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap overflow-x-auto surface-scroll -mx-1 px-1">
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setAmount((a) => Math.max(1, a - 10))}
+                        className="shrink-0 w-8 h-10 sm:w-9 rounded-lg glass flex items-center justify-center text-slate-400 hover:text-slate-200 active:scale-95 touch-manipulation text-xs font-medium"
+                      >
+                        −10
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAmount((a) => Math.max(1, a - 5))}
+                        className="shrink-0 w-8 h-10 sm:w-9 rounded-lg glass flex items-center justify-center text-slate-400 hover:text-slate-200 active:scale-95 touch-manipulation text-xs font-medium"
+                      >
+                        −5
+                      </button>
                       <label className="text-[10px] text-slate-500 shrink-0">$</label>
                       <input
                         type="number"
+                        inputMode="decimal"
                         min={1}
                         step={1}
                         value={amount}
                         onChange={(e) =>
                           setAmount(Math.max(1, Number(e.target.value) || 1))
                         }
-                        className="w-14 input-glass py-2 text-sm font-mono min-h-[40px]"
+                        className="w-[68px] sm:w-20 input-glass py-2.5 text-base font-mono min-h-[48px] text-center"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setAmount((a) => a + 5)}
+                        className="shrink-0 w-8 h-10 sm:w-9 rounded-lg glass flex items-center justify-center text-slate-400 hover:text-slate-200 active:scale-95 touch-manipulation text-xs font-medium"
+                      >
+                        +5
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAmount((a) => a + 10)}
+                        className="shrink-0 w-8 h-10 sm:w-9 rounded-lg glass flex items-center justify-center text-slate-400 hover:text-slate-200 active:scale-95 touch-manipulation text-xs font-medium"
+                      >
+                        +10
+                      </button>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setDuration((d) => Math.max(60, d - 15))}
+                        className="shrink-0 w-8 h-10 sm:w-9 rounded-lg glass flex items-center justify-center text-slate-400 hover:text-slate-200 active:scale-95 touch-manipulation text-xs font-medium"
+                      >
+                        −15
+                      </button>
                       <input
                         type="number"
+                        inputMode="numeric"
                         min={60}
                         step={15}
                         value={duration}
                         onChange={(e) =>
                           setDuration(Math.max(60, Number(e.target.value) || 60))
                         }
-                        className="w-12 input-glass py-2 text-sm font-mono min-h-[40px]"
+                        className="w-[56px] sm:w-16 input-glass py-2.5 text-base font-mono min-h-[48px] text-center"
                       />
+                      <button
+                        type="button"
+                        onClick={() => setDuration((d) => d + 15)}
+                        className="shrink-0 w-8 h-10 sm:w-9 rounded-lg glass flex items-center justify-center text-slate-400 hover:text-slate-200 active:scale-95 touch-manipulation text-xs font-medium"
+                      >
+                        +15
+                      </button>
                       <span className="text-slate-500 text-[10px] shrink-0">{t("trade.sec")}</span>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    {[1, 5, 10, 25, 50].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setAmount(v)}
+                        className={`chip rounded-lg min-h-[40px] min-w-[40px] flex items-center justify-center text-sm font-medium px-2 ${
+                          amount === v ? "chip-active" : ""
+                        }`}
+                      >
+                        ${v}
+                      </button>
+                    ))}
+                  </div>
+                  </>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
-                      className="rounded-lg min-h-[44px] py-2.5 text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 touch-manipulation"
+                      className="rounded-xl min-h-[52px] py-3 text-base font-semibold bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 touch-manipulation shadow-[0_0_16px_rgba(16,185,129,0.2)] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       disabled={placing}
                       onClick={() => place("LONG")}
                     >
+                      {placing ? (
+                        <span className="h-5 w-5 rounded-full border-2 border-slate-900/30 border-t-slate-900 animate-spin" />
+                      ) : null}
                       LONG ↑
                     </button>
                     <button
                       type="button"
-                      className="rounded-lg min-h-[44px] py-2.5 text-sm font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 touch-manipulation"
+                      className="rounded-xl min-h-[52px] py-3 text-base font-semibold bg-orange-500/95 hover:bg-orange-400 active:scale-[0.98] text-slate-950 touch-manipulation shadow-[0_0_16px_rgba(249,115,22,0.2)] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                       disabled={placing}
                       onClick={() => place("SHORT")}
                     >
+                      {placing ? (
+                        <span className="h-5 w-5 rounded-full border-2 border-slate-900/30 border-t-slate-900 animate-spin" />
+                      ) : null}
                       SHORT ↓
                     </button>
                   </div>
@@ -960,7 +1103,7 @@ function ActiveTrades() {
   const active = useTradingStore((s) => s.activeTrades);
 
   return (
-    <div className="flex flex-col min-h-0 flex-1 glass rounded-t-2xl xl:rounded-b-2xl p-4 xl:p-6">
+    <div className="flex flex-col min-h-0 flex-1 glass rounded-t-2xl xl:rounded-b-2xl p-3 sm:p-4 xl:p-6">
       <div className="flex items-center justify-between mb-3 shrink-0">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
           {t("trade.activeTradesTitle")}
@@ -976,16 +1119,16 @@ function ActiveTrades() {
         </div>
       ) : (
         <>
-          {/* Мобильные: одна полоса, карточки уходят вправо за экран со скроллом */}
-          <div className="xl:hidden overflow-x-auto overflow-y-hidden rounded-lg bg-slate-950/40 surface-scroll -mx-1 px-1">
+          {/* Мобильные: горизонтальный скролл карточек */}
+          <div className="xl:hidden overflow-x-auto overflow-y-hidden rounded-lg bg-slate-950/40 surface-scroll -mx-1 px-1 pb-1">
             <div className="flex gap-2 pb-2">
               {active.map((trade) => (
                 <div
                   key={trade.id}
-                  className="flex shrink-0 items-center gap-2 py-2 px-3 rounded-lg bg-slate-800/60 min-h-[44px]"
+                  className="flex shrink-0 items-center gap-2 py-2.5 px-3 rounded-xl bg-slate-800/60 min-h-[48px] touch-manipulation"
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="font-mono text-slate-100 text-[11px] truncate">
+                    <span className="font-mono text-slate-100 text-sm truncate max-w-[80px] sm:max-w-[100px]">
                       {trade.tradingPair?.symbol ?? trade.tradingPairId}
                     </span>
                     <span
@@ -998,7 +1141,7 @@ function ActiveTrades() {
                       {trade.direction}
                     </span>
                   </div>
-                  <span className="font-mono text-slate-300 text-[10px] shrink-0">${Number(trade.amount).toFixed(0)}</span>
+                  <span className="font-mono text-slate-300 text-xs shrink-0">${Number(trade.amount).toFixed(0)}</span>
                   <Countdown expiresAt={trade.expiresAt} compact />
                 </div>
               ))}
