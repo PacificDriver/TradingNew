@@ -1,4 +1,4 @@
-image.png"use client";
+"use client";
 
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
