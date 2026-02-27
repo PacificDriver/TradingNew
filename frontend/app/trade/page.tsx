@@ -422,7 +422,20 @@ function TradePageContent() {
     setError(null);
     setPlacing(true);
     try {
-      const res = await apiFetch<{ trade: unknown; balance: number }>("/trade/open", {
+      const res = await apiFetch<{
+        trade: {
+          id: number;
+          tradingPairId: number;
+          amount: number;
+          direction: string;
+          entryPrice: number;
+          closePrice: number | null;
+          status: string;
+          expiresAt: string;
+          createdAt: string;
+        };
+        balance: number;
+      }>("/trade/open", {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify({
@@ -434,6 +447,15 @@ function TradePageContent() {
       });
       if (user && res.balance != null) {
         setAuth(token ?? null, { ...user, demoBalance: res.balance });
+      }
+      if (res.trade && res.trade.status === "ACTIVE") {
+        const newTrade: Trade = {
+          ...res.trade,
+          direction: res.trade.direction as TradeDirection,
+          tradingPair: selectedPair,
+          closePrice: res.trade.closePrice ?? null
+        };
+        setActiveTrades([newTrade, ...activeTrades]);
       }
     } catch (err) {
       setError(getDisplayMessage(err, t));
@@ -782,19 +804,19 @@ function TradePageContent() {
                 <div className="flex gap-1 flex-1 justify-end min-w-0">
                   <button
                     type="button"
-                    className="flex-1 min-w-0 max-w-[70px] rounded-md min-h-[28px] py-1 text-[11px] font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 touch-manipulation"
+                    className="flex-1 min-w-0 max-w-[70px] rounded-md min-h-[28px] py-1 text-[11px] font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 touch-manipulation disabled:opacity-70 transition-opacity"
                     disabled={placing}
                     onClick={() => place("LONG")}
                   >
-                    LONG ↑
+                    {placing ? "…" : "LONG ↑"}
                   </button>
                   <button
                     type="button"
-                    className="flex-1 min-w-0 max-w-[70px] rounded-md min-h-[28px] py-1 text-[11px] font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 touch-manipulation"
+                    className="flex-1 min-w-0 max-w-[70px] rounded-md min-h-[28px] py-1 text-[11px] font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 touch-manipulation disabled:opacity-70 transition-opacity"
                     disabled={placing}
                     onClick={() => place("SHORT")}
                   >
-                    SHORT ↓
+                    {placing ? "…" : "SHORT ↓"}
                   </button>
                 </div>
               </div>
@@ -890,19 +912,19 @@ function TradePageContent() {
                 <div className="hidden xl:grid grid-cols-2 gap-3 pt-2">
                   <button
                     type="button"
-                    className="rounded-xl min-h-[52px] xl:min-h-0 py-4 xl:py-3 text-base xl:text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.25)] transition-all active:scale-[0.98] touch-manipulation"
+                    className="rounded-xl min-h-[52px] xl:min-h-0 py-4 xl:py-3 text-base xl:text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.25)] transition-all active:scale-[0.98] touch-manipulation disabled:opacity-70"
                     disabled={placing}
                     onClick={() => place("LONG")}
                   >
-                    LONG ↑
+                    {placing ? "…" : "LONG ↑"}
                   </button>
                   <button
                     type="button"
-                    className="rounded-xl min-h-[52px] xl:min-h-0 py-4 xl:py-3 text-base xl:text-sm font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 shadow-[0_0_20px_rgba(249,115,22,0.25)] transition-all active:scale-[0.98] touch-manipulation"
+                    className="rounded-xl min-h-[52px] xl:min-h-0 py-4 xl:py-3 text-base xl:text-sm font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 shadow-[0_0_20px_rgba(249,115,22,0.25)] transition-all active:scale-[0.98] touch-manipulation disabled:opacity-70"
                     disabled={placing}
                     onClick={() => place("SHORT")}
                   >
-                    SHORT ↓
+                    {placing ? "…" : "SHORT ↓"}
                   </button>
                 </div>
 

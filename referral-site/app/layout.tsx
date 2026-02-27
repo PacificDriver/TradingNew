@@ -7,7 +7,6 @@ import { GradientBackground } from "../components/GradientBackground";
 import { ReferralAuthProvider } from "./ReferralAuthContext";
 import { ReferralNav } from "./ReferralNav";
 import { ChartLogo } from "../components/ChartLogo";
-import { LocaleProvider } from "../lib/i18n";
 
 const unbounded = Unbounded({
   subsets: ["latin", "cyrillic"],
@@ -21,8 +20,8 @@ const manrope = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "Referral Program",
-  description: "Partner dashboard — referral analytics",
+  title: "Реферальная программа",
+  description: "Личный кабинет партнёра — аналитика по рефералам",
 };
 
 export const viewport = {
@@ -34,9 +33,8 @@ export const viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`dark ${unbounded.variable} ${manrope.variable}`}>
+    <html lang="ru" className={`dark ${unbounded.variable} ${manrope.variable}`}>
       <body className="min-h-screen bg-background text-slate-100 font-body relative">
-        <LocaleProvider>
         <ReferralAuthProvider>
           <div className="min-h-screen flex flex-col relative">
             <GradientBackground />
@@ -55,7 +53,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             </div>
           </div>
         </ReferralAuthProvider>
-        </LocaleProvider>
       </body>
     </html>
   );

@@ -64,15 +64,6 @@ body {
   overscroll-behavior: none;
 }
 
-/* iOS: предотвратить авто-зум при фокусе на input (font-size >= 16px) */
-@media screen and (max-width: 1023px) {
-  input,
-  select,
-  textarea {
-    font-size: 16px !important;
-  }
-}
-
 .glass,
 .glass-panel,
 .card {

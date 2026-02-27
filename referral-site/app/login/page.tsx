@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useReferralAuth } from "../ReferralAuthContext";
 import { referralApiFetch, setReferralToken } from "../../lib/referralApi";
-import { useLocale } from "../../lib/i18n";
 
 const inputClass = "mt-1.5 input-glass";
 
@@ -16,7 +15,6 @@ type LoginResponse = {
 
 export default function ReferralLoginPage() {
   const router = useRouter();
-  const { t } = useLocale();
   const { setPartner } = useReferralAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,7 +34,7 @@ export default function ReferralLoginPage() {
       setPartner(data.partner);
       router.push("/dashboard");
     } catch (err) {
-      setError((err as Error)?.message || t("ref.invalidCredentials"));
+      setError((err as Error)?.message || "Неверные учетные данные");
     } finally {
       setLoading(false);
     }
@@ -46,16 +44,16 @@ export default function ReferralLoginPage() {
     <div className="flex flex-col items-center justify-center min-h-[70vh] px-4">
       <div className="card w-full max-w-md p-6 sm:p-8 animate-fade-in-up">
         <h1 className="font-display text-2xl font-semibold text-slate-100 tracking-tight mb-2">
-          {t("ref.loginTitle")}
+          Вход в кабинет партнёра
         </h1>
         <p className="text-sm text-slate-400 mb-6">
-          {t("ref.loginSubtitle")}
+          Войдите в личный кабинет реферальной программы
         </p>
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-slate-500">
-              {t("ref.email")}
+              Email
             </label>
             <input
               type="email"
@@ -68,7 +66,7 @@ export default function ReferralLoginPage() {
           </div>
           <div>
             <label className="block text-[11px] uppercase tracking-wider text-slate-500">
-              {t("ref.password")}
+              Пароль
             </label>
             <input
               type="password"
@@ -90,19 +88,19 @@ export default function ReferralLoginPage() {
             className="btn-primary w-full py-3 mt-1 rounded-xl disabled:opacity-70"
             disabled={loading}
           >
-            {loading ? t("ref.loggingIn") : t("ref.login")}
+            {loading ? "Вход..." : "Войти"}
           </button>
         </form>
 
         <div className="mt-6 pt-5 border-t border-white/5">
           <p className="text-sm text-slate-500 text-center">
-            {t("ref.noAccount")}{" "}
+            Нет аккаунта?{" "}
             <Link href="/register" className="text-accent font-medium hover:text-emerald-400">
-              {t("ref.registerLink")}
+              Регистрация
             </Link>
           </p>
           <Link href="/" className="mt-3 block text-center text-xs text-slate-500 hover:text-slate-400">
-            {t("ref.back")}
+            Назад
           </Link>
         </div>
       </div>

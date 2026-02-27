@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "prisma generate && ts-node-dev --respawn --transpile-only src/index.ts",
     "start": "node -r ts-node/register src/index.ts",
-    "prisma:generate": "prisma generate",
-    "create-admin": "ts-node scripts/create-admin.ts"
+    "prisma:generate": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.16.1",

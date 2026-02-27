@@ -84,8 +84,8 @@ const DARK_THEME = {
     timeVisible: true,
     secondsVisible: true,
     rightOffset: 12,
-    barSpacing: 3,
-    minBarSpacing: 0.5,
+    barSpacing: 6,
+    minBarSpacing: 2,
     fixLeftEdge: false,
     fixRightEdge: false,
     lockVisibleTimeRangeOnResize: true
@@ -284,7 +284,7 @@ function PriceChartInner({
       ts.fitContent();
       const n = normalizedCandles.length;
       const rightOffset = 12;
-      const visibleBars = 120;
+      const visibleBars = 80;
       ts.setVisibleLogicalRange({
         from: Math.max(0, n - visibleBars),
         to: n + rightOffset

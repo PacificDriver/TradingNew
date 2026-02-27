@@ -12,8 +12,6 @@ type AdminUser = {
   id: number;
   email: string;
   isAdmin: boolean;
-  demoBalance: number;
-  referralBalance: number;
   createdAt: string;
   blockedAt: string | null;
   withdrawBlockedAt: string | null;
@@ -49,7 +47,6 @@ export default function AdminPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [actingUserId, setActingUserId] = useState<number | null>(null);
-  const [balanceAmount, setBalanceAmount] = useState<Record<number, string>>({});
 
   // Pairs
   const [pairs, setPairs] = useState<TradingPairRow[]>([]);
@@ -131,44 +128,6 @@ export default function AdminPage() {
       // ignore
     } finally {
       setReferralSaving(false);
-    }
-  }
-
-  async function adjustBalance(targetId: number, add: boolean, balanceType: "demo" | "referral" = "demo") {
-    const raw = balanceAmount[targetId] ?? "";
-    const val = parseFloat(raw);
-    if (!Number.isFinite(val) || val <= 0) {
-      setUsersError("Введите положительное число");
-      return;
-    }
-    const amount = add ? val : -val;
-    if (!token) return;
-    setActingUserId(targetId);
-    try {
-      const data = await apiFetch<{ demoBalance: number; referralBalance: number }>(
-        `/admin/users/${targetId}/balance`,
-        {
-          method: "PATCH",
-          headers: authHeaders(token),
-          body: JSON.stringify({ amount, balance: balanceType })
-        }
-      );
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id !== targetId ? u : { ...u, demoBalance: data.demoBalance, referralBalance: data.referralBalance }
-        )
-      );
-      setBalanceAmount((prev) => ({ ...prev, [targetId]: "" }));
-      setUsersError(null);
-    } catch (err) {
-      if (isAuthError(err)) {
-        clearAuth();
-        router.replace("/login");
-        return;
-      }
-      setUsersError((err as Error)?.message ?? t("admin.error"));
-    } finally {
-      setActingUserId(null);
     }
   }
 
@@ -343,12 +302,11 @@ export default function AdminPage() {
               <div className="py-10 px-4 text-center text-slate-500 text-sm">{t("admin.noUsers")}</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[800px] text-sm">
+                <table className="w-full min-w-[640px] text-sm">
                   <thead className="border-b border-slate-700/60">
                     <tr>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">ID</th>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">Email</th>
-                      <th className="px-4 py-3 text-left text-slate-500 font-medium">Демо / Реф.</th>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">{t("admin.status")}</th>
                       <th className="px-4 py-3 text-right text-slate-500 font-medium">{t("admin.actions")}</th>
                     </tr>
@@ -358,44 +316,6 @@ export default function AdminPage() {
                       <tr key={u.id} className="hover:bg-slate-800/30">
                         <td className="px-4 py-3 font-mono text-slate-400">{u.id}</td>
                         <td className="px-4 py-3 text-slate-200 truncate max-w-[200px]">{u.email}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col gap-1">
-                            <span className="font-mono text-slate-300">
-                              {Number(u.demoBalance).toLocaleString()} / {Number(u.referralBalance).toLocaleString()}
-                            </span>
-                            {!u.isAdmin && (
-                              <div className="flex items-center gap-1 flex-wrap">
-                                <input
-                                  type="number"
-                                  step="any"
-                                  min="0"
-                                  placeholder="Сумма"
-                                  value={balanceAmount[u.id] ?? ""}
-                                  onChange={(e) =>
-                                    setBalanceAmount((prev) => ({ ...prev, [u.id]: e.target.value }))
-                                  }
-                                  className="w-20 rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-xs font-mono outline-none focus:border-accent"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => adjustBalance(u.id, true, "demo")}
-                                  disabled={actingUserId === u.id}
-                                  className="rounded border border-emerald-500/50 bg-emerald-950/40 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400 hover:bg-emerald-950/60 disabled:opacity-50"
-                                >
-                                  {actingUserId === u.id ? "…" : "+"}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => adjustBalance(u.id, false, "demo")}
-                                  disabled={actingUserId === u.id}
-                                  className="rounded border border-red-500/50 bg-red-950/40 px-1.5 py-0.5 text-[10px] font-medium text-red-400 hover:bg-red-950/60 disabled:opacity-50"
-                                >
-                                  {actingUserId === u.id ? "…" : "−"}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </td>
                         <td className="px-4 py-3">
                           <span className="inline-flex flex-wrap gap-1">
                             {u.isAdmin && (

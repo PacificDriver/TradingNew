@@ -33,7 +33,7 @@ export function setStoredLocale(locale: Locale): void {
  * Detects preferred locale:
  * 1. Stored user choice (localStorage)
  * 2. Browser language (navigator.language / navigator.languages), first match in SUPPORTED_LOCALES
- * 3. Default (en)
+ * 3. Default (ru)
  */
 export function getPreferredLocale(): Locale {
   const stored = getStoredLocale();
