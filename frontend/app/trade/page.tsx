@@ -9,7 +9,6 @@ import {
   useTradingStore,
   TradingPair,
   TradeDirection,
-  TradeStatus,
   Trade
 } from "../../store/useTradingStore";
 import { SettledResultOverlay } from "../../components/SettledResultOverlay";
@@ -76,7 +75,6 @@ function TradePageContent() {
   const upsertPrice = useTradingStore((s) => s.upsertPrice);
   const setActiveTrades = useTradingStore((s) => s.setActiveTrades);
   const setCompletedTrades = useTradingStore((s) => s.setCompletedTrades);
-  const applyTradeUpdate = useTradingStore((s) => s.applyTradeUpdate);
   const chartSettings = useTradingStore((s) => s.chartSettings);
   const setChartSettings = useTradingStore((s) => s.setChartSettings);
 
@@ -424,24 +422,7 @@ function TradePageContent() {
     setError(null);
     setPlacing(true);
     try {
-<<<<<<< HEAD
-      const res = await apiFetch<{ trade?: Record<string, unknown>; balance: number }>("/trade/open", {
-=======
-      const res = await apiFetch<{
-        trade: {
-          id: number;
-          tradingPairId: number;
-          amount: number;
-          direction: string;
-          entryPrice: number;
-          closePrice: number | null;
-          status: string;
-          expiresAt: string;
-          createdAt: string;
-        };
-        balance: number;
-      }>("/trade/open", {
->>>>>>> 346535b5c6ca07f3075f719c0dc37cd9bc5235bd
+      const res = await apiFetch<{ trade: unknown; balance: number }>("/trade/open", {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify({
@@ -453,32 +434,6 @@ function TradePageContent() {
       });
       if (user && res.balance != null) {
         setAuth(token ?? null, { ...user, demoBalance: res.balance });
-      }
-<<<<<<< HEAD
-      if (res.trade && (res.trade.status as string) === "ACTIVE") {
-        const newTrade: Trade = {
-          id: res.trade.id as number,
-          tradingPairId: res.trade.tradingPairId as number,
-          amount: res.trade.amount as number,
-          direction: res.trade.direction as TradeDirection,
-          entryPrice: res.trade.entryPrice as number,
-          closePrice: (res.trade.closePrice as number | null) ?? null,
-          status: res.trade.status as TradeStatus,
-          expiresAt: res.trade.expiresAt as string,
-          createdAt: res.trade.createdAt as string,
-          tradingPair: selectedPair
-        };
-        applyTradeUpdate(newTrade);
-=======
-      if (res.trade && res.trade.status === "ACTIVE") {
-        const newTrade: Trade = {
-          ...res.trade,
-          direction: res.trade.direction as TradeDirection,
-          tradingPair: selectedPair,
-          closePrice: res.trade.closePrice ?? null
-        };
-        setActiveTrades([newTrade, ...activeTrades]);
->>>>>>> 346535b5c6ca07f3075f719c0dc37cd9bc5235bd
       }
     } catch (err) {
       setError(getDisplayMessage(err, t));
@@ -502,8 +457,8 @@ function TradePageContent() {
       <WebSocketBridge />
       <SettledResultOverlay />
       <div className="flex flex-1 flex-col min-h-0 gap-0 xl:gap-6 mt-2 xl:mt-4 pb-[env(safe-area-inset-bottom,0px)]">
-        {/* Верхняя часть: график + ордер. На мобильных: график на всю высоту, ордер прижат к низу */}
-        <div className="relative grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] gap-0 xl:gap-6 min-h-[min(45vh,320px)] xl:min-h-[480px] flex-1 items-stretch">
+        {/* Верхняя часть: график + ордер. На мобильных: ордер наезжает на график снизу и всегда виден */}
+        <div className="relative grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] gap-0 xl:gap-6 min-h-0 xl:min-h-[480px] flex-1 items-stretch">
           {/* Левая часть — пара + график. На мобильных без рамки, график во всю ширину */}
           <div className="flex flex-col gap-2 xl:gap-4 min-h-0 min-w-0 overflow-hidden flex-1 rounded-none border-0 bg-transparent p-2 -mx-2 xl:mx-0 xl:glass xl:rounded-2xl xl:p-6 animate-fade-in-up stagger-1 opacity-0 transition-shadow duration-300 xl:hover:shadow-soft-glow/30">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -648,25 +603,19 @@ function TradePageContent() {
                 </button>
               ))}
             </div>
-<<<<<<< HEAD
             {/* На мобильных — график без краёв; компактный отступ снизу, панель ордера не загораживает */}
-            <div className="mt-1 xl:mt-2 min-h-[260px] sm:min-h-[320px] xl:min-h-[380px] flex-1 w-full min-w-0 overflow-x-auto overflow-y-hidden xl:overflow-hidden flex flex-col relative surface-scroll pb-[240px] xl:pb-0">
-              {/* Мобильные: компактные выпадающие кнопки поверх графика */}
-=======
-            {/* На мобильных — график; отступ снизу под панель ордера (~44px) + нижнее меню (56px) */}
-            <div className="mt-1 xl:mt-2 min-h-[200px] sm:min-h-[260px] xl:min-h-[380px] flex-1 w-full min-w-0 overflow-x-auto overflow-y-hidden xl:overflow-hidden flex flex-col relative surface-scroll pb-[100px] xl:pb-0">
+            <div className="mt-1 xl:mt-2 min-h-[260px] sm:min-h-[320px] xl:min-h-[380px] flex-1 w-full min-w-0 overflow-x-auto overflow-y-hidden xl:overflow-hidden flex flex-col relative surface-scroll pb-[130px] xl:pb-0">
               {/* Мобильные: выпадающие кнопки поверх графика (тип графика, таймфрейм, индикаторы) */}
->>>>>>> 346535b5c6ca07f3075f719c0dc37cd9bc5235bd
               <div
                 ref={mobileMenuRef}
-                className="xl:hidden absolute top-2 left-2 right-2 z-20 flex flex-wrap gap-1.5 pointer-events-none [&>*]:pointer-events-auto"
+                className="xl:hidden absolute top-2 left-2 z-20 flex flex-wrap gap-2 pointer-events-none [&>*]:pointer-events-auto"
               >
                 {/* Тип графика */}
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => setMobileChartMenu((m) => (m === "chart" ? null : "chart"))}
-                    className="flex items-center gap-1 min-h-[38px] px-2.5 rounded-lg bg-slate-800/95 backdrop-blur-md border border-slate-600/60 text-slate-200 text-xs font-medium shadow-lg touch-manipulation"
+                    className="flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-slate-800/90 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation"
                   >
                     <span className="text-slate-400 text-xs">{t("trade.chart")}</span>
                     <span>{chartMode === "line" ? t("trade.line") : t("trade.candles")}</span>
@@ -698,7 +647,7 @@ function TradePageContent() {
                   <button
                     type="button"
                     onClick={() => setMobileChartMenu((m) => (m === "timeframe" ? null : "timeframe"))}
-                    className="flex items-center gap-1 min-h-[38px] px-2.5 rounded-lg bg-slate-800/95 backdrop-blur-md border border-slate-600/60 text-slate-200 text-xs font-medium shadow-lg touch-manipulation"
+                    className="flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-slate-800/90 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation"
                   >
                     <span className="text-slate-400 text-xs">{t("trade.timeframe")}</span>
                     <span>
@@ -742,7 +691,7 @@ function TradePageContent() {
                   <button
                     type="button"
                     onClick={() => setMobileChartMenu((m) => (m === "indicators" ? null : "indicators"))}
-                    className="flex items-center gap-1 min-h-[38px] px-2.5 rounded-lg bg-slate-800/95 backdrop-blur-md border border-slate-600/60 text-slate-200 text-xs font-medium shadow-lg touch-manipulation"
+                    className="flex items-center gap-1.5 min-h-[40px] px-3 rounded-xl bg-slate-800/90 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation"
                   >
                     <span className="text-slate-400 text-xs">{t("trade.indicators")}</span>
                     <span>
@@ -787,14 +736,6 @@ function TradePageContent() {
                 showBB={showBB}
                 containerClassName="rounded-none bg-transparent border-0 shadow-none xl:rounded-xl xl:glass"
               />
-              {/* Компактная плашка «Новый ордер» — всегда в углу графика */}
-              <button
-                type="button"
-                onClick={() => document.getElementById("order-panel")?.scrollIntoView({ behavior: "smooth" })}
-                className="absolute bottom-3 left-2 xl:bottom-2 xl:left-2 z-20 flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/25 hover:bg-emerald-500/35 border border-emerald-500/40 text-emerald-400 backdrop-blur-sm touch-manipulation"
-              >
-                {t("trade.newOrder")}
-              </button>
               {lastSettledResult && (
                 <ChartResultFeedback
                   status={lastSettledResult.status}
@@ -805,11 +746,10 @@ function TradePageContent() {
             </div>
           </div>
 
-<<<<<<< HEAD
           {/* Правая часть. На мобильных: ордер внизу (фиксирован), активные сделки сверху (max 5 рядов + горизонтальный скролл) */}
           <div className="flex flex-col-reverse xl:flex-col gap-4 xl:gap-5 min-h-0 max-h-[75vh] xl:max-h-none animate-fade-in-up stagger-2 opacity-0 absolute bottom-0 left-0 right-0 z-10 xl:static xl:z-0 overflow-hidden xl:overflow-visible">
             {/* Новый ордер — на мобильных внизу (flex-col-reverse), на ПК сверху */}
-            <div className="flex flex-col gap-2 xl:gap-5 shrink-0 rounded-b-2xl xl:rounded-2xl p-4 xl:p-6 transition-shadow duration-300 xl:hover:shadow-soft-glow/20 bg-slate-900/95 backdrop-blur-xl border border-slate-700/50 border-t-0 xl:border-t xl:border-b-0 xl:bg-transparent xl:backdrop-blur-none xl:border xl:border-slate-700/50 xl:glass">
+            <div className="flex flex-col gap-2 xl:gap-5 shrink-0 rounded-b-2xl xl:rounded-2xl p-3 xl:p-6 transition-shadow duration-300 xl:hover:shadow-soft-glow/20 bg-slate-900/90 backdrop-blur-md border border-slate-700/50 border-t-0 xl:border-t xl:border-b-0 xl:bg-transparent xl:backdrop-blur-none xl:border xl:border-slate-700/50 xl:glass">
               <div className="flex items-center justify-between gap-2 xl:gap-3 pb-1 xl:pb-3">
                 <div className="min-w-0 flex items-center gap-2">
                   <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 xl:text-xs xl:text-slate-400">
@@ -818,78 +758,21 @@ function TradePageContent() {
                   <p className="text-xs xl:text-sm font-medium text-slate-200 truncate">
                     {selectedPair ? selectedPair.name : t("trade.selectAsset")}
                   </p>
-=======
-          {/* Правая часть. На мобильных: ордер fixed внизу (всегда виден), активные сделки над ним */}
-          <div className="flex flex-col-reverse xl:flex-col gap-2 xl:gap-5 min-h-0 max-h-[75vh] xl:max-h-none animate-fade-in-up stagger-2 opacity-0 absolute bottom-0 left-0 right-0 z-10 xl:static xl:z-0 overflow-y-auto overflow-x-hidden xl:overflow-visible pb-[72px] xl:pb-0">
-            {/* Новый ордер — на мобильных fixed над нижней навигацией, всегда виден, очень компактный */}
-            <div id="order-panel" className="xl:static fixed left-0 right-0 z-20 xl:z-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] xl:bottom-auto flex flex-col xl:flex-col gap-1 xl:gap-5 shrink-0 rounded-t-xl xl:rounded-2xl p-1.5 xl:p-6 transition-shadow duration-300 xl:hover:shadow-soft-glow/20 bg-slate-900/95 backdrop-blur-md border border-slate-700/50 border-t border-b-0 xl:border-b xl:border xl:bg-transparent xl:backdrop-blur-none xl:glass xl:pb-0">
-              {/* Мобильные: одна строка — всё в одну линию: $сумма | время | LONG | SHORT */}
-              <div className="xl:hidden flex items-center gap-1.5 flex-nowrap">
-                <span className="text-[9px] text-slate-500 shrink-0">$</span>
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={amount}
-                  onChange={(e) => setAmount(Math.max(1, Number(e.target.value) || 1))}
-                  className="w-10 input-glass py-1 px-1.5 text-[13px] font-mono min-h-[28px] max-h-[28px] shrink-0"
-                />
-                <input
-                  type="number"
-                  min={60}
-                  step={15}
-                  value={duration}
-                  onChange={(e) => setDuration(Math.max(60, Number(e.target.value) || 60))}
-                  className="w-9 input-glass py-1 px-1.5 text-[13px] font-mono min-h-[28px] max-h-[28px] shrink-0"
-                />
-                <span className="text-[8px] text-slate-500 shrink-0">{t("trade.sec")}</span>
-                <span className="text-[10px] font-mono text-accent shrink-0 ml-0.5">${formatBalance(user?.demoBalance)}</span>
-                <div className="flex gap-1 flex-1 justify-end min-w-0">
-                  <button
-                    type="button"
-                    className="flex-1 min-w-0 max-w-[70px] rounded-md min-h-[28px] py-1 text-[11px] font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 touch-manipulation disabled:opacity-70 transition-opacity"
-                    disabled={placing}
-                    onClick={() => place("LONG")}
-                  >
-                    {placing ? "…" : "LONG ↑"}
-                  </button>
-                  <button
-                    type="button"
-                    className="flex-1 min-w-0 max-w-[70px] rounded-md min-h-[28px] py-1 text-[11px] font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 touch-manipulation disabled:opacity-70 transition-opacity"
-                    disabled={placing}
-                    onClick={() => place("SHORT")}
-                  >
-                    {placing ? "…" : "SHORT ↓"}
-                  </button>
->>>>>>> 346535b5c6ca07f3075f719c0dc37cd9bc5235bd
                 </div>
-              </div>
-              <div className="hidden xl:contents">
-                <div className="flex items-center justify-between gap-2 xl:gap-3 pb-0.5 xl:pb-3">
-                  <div className="min-w-0 flex items-center gap-1.5 xl:gap-2 flex-1">
-                    <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 xl:text-xs xl:text-slate-400 shrink-0">
-                      {t("trade.newOrder")}
-                    </h3>
-                    <p className="text-[11px] xl:text-sm font-medium text-slate-200 truncate">
-                      {selectedPair ? selectedPair.symbol : t("trade.selectAsset")}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-[9px] xl:text-[10px] uppercase tracking-wider text-slate-500">{t("trade.balance")}</p>
-                    <p className="text-xs xl:text-base font-semibold text-accent font-mono tabular-nums">
-                      ${formatBalance(user?.demoBalance)}
-                    </p>
-                  </div>
+                <div className="text-right shrink-0">
+                  <p className="text-[10px] uppercase tracking-wider text-slate-500">{t("trade.balance")}</p>
+                  <p className="text-sm xl:text-base font-semibold text-accent font-mono tabular-nums">
+                    ${formatBalance(user?.demoBalance)}
+                  </p>
                 </div>
               </div>
 
-<<<<<<< HEAD
               <div className="grid grid-cols-1 gap-2 xl:gap-5">
-                {/* Мобильные: сумма, время, кнопки LONG/SHORT — удобные зоны нажатия, быстрые чипы */}
-                <div className="xl:hidden flex flex-col gap-3">
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-slate-500">{t("trade.amountLabel")}</span>
-                    <div className="flex flex-wrap items-center gap-2">
+                {/* Мобильные: сумма, время, кнопки LONG/SHORT — всегда видны */}
+                <div className="xl:hidden flex flex-col gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <label className="text-[10px] text-slate-500 shrink-0">$</label>
                       <input
                         type="number"
                         min={1}
@@ -898,25 +781,10 @@ function TradePageContent() {
                         onChange={(e) =>
                           setAmount(Math.max(1, Number(e.target.value) || 1))
                         }
-                        className="w-20 input-glass py-3 text-base font-mono min-h-[48px] touch-manipulation"
+                        className="w-14 input-glass py-2 text-sm font-mono min-h-[40px]"
                       />
-                      {[1, 5, 10, 25, 50].map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => setAmount(v)}
-                          className={`chip rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center text-sm font-semibold touch-manipulation ${
-                            amount === v ? "chip-active" : ""
-                          }`}
-                        >
-                          ${v}
-                        </button>
-                      ))}
                     </div>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-slate-500">{t("trade.expiryLabel")}</span>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <input
                         type="number"
                         min={60}
@@ -925,27 +793,15 @@ function TradePageContent() {
                         onChange={(e) =>
                           setDuration(Math.max(60, Number(e.target.value) || 60))
                         }
-                        className="w-20 input-glass py-3 text-base font-mono min-h-[48px] touch-manipulation"
+                        className="w-12 input-glass py-2 text-sm font-mono min-h-[40px]"
                       />
-                      <span className="text-slate-500 text-xs">{t("trade.sec")}</span>
-                      {[60, 120, 180].map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => setDuration(v)}
-                          className={`chip rounded-xl min-h-[44px] min-w-[44px] flex items-center justify-center text-sm font-semibold touch-manipulation ${
-                            duration === v ? "chip-active" : ""
-                          }`}
-                        >
-                          {v}s
-                        </button>
-                      ))}
+                      <span className="text-slate-500 text-[10px] shrink-0">{t("trade.sec")}</span>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      className="rounded-xl min-h-[52px] py-3.5 text-base font-bold bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.3)] touch-manipulation"
+                      className="rounded-lg min-h-[44px] py-2.5 text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 touch-manipulation"
                       disabled={placing}
                       onClick={() => place("LONG")}
                     >
@@ -953,7 +809,7 @@ function TradePageContent() {
                     </button>
                     <button
                       type="button"
-                      className="rounded-xl min-h-[52px] py-3.5 text-base font-bold bg-orange-500/95 hover:bg-orange-400 active:scale-[0.98] text-slate-950 shadow-[0_0_20px_rgba(249,115,22,0.3)] touch-manipulation"
+                      className="rounded-lg min-h-[44px] py-2.5 text-sm font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 touch-manipulation"
                       disabled={placing}
                       onClick={() => place("SHORT")}
                     >
@@ -961,9 +817,6 @@ function TradePageContent() {
                     </button>
                   </div>
                 </div>
-=======
-              <div className="hidden xl:grid grid-cols-1 gap-1.5 xl:gap-5">
->>>>>>> 346535b5c6ca07f3075f719c0dc37cd9bc5235bd
                 <div className="hidden xl:block">
                   <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-500 mb-2">
                     {t("trade.amountLabel")}
@@ -1036,24 +889,24 @@ function TradePageContent() {
                 <div className="hidden xl:grid grid-cols-2 gap-3 pt-2">
                   <button
                     type="button"
-                    className="rounded-xl min-h-[52px] xl:min-h-0 py-4 xl:py-3 text-base xl:text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.25)] transition-all active:scale-[0.98] touch-manipulation disabled:opacity-70"
+                    className="rounded-xl min-h-[52px] xl:min-h-0 py-4 xl:py-3 text-base xl:text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.25)] transition-all active:scale-[0.98] touch-manipulation"
                     disabled={placing}
                     onClick={() => place("LONG")}
                   >
-                    {placing ? "…" : "LONG ↑"}
+                    LONG ↑
                   </button>
                   <button
                     type="button"
-                    className="rounded-xl min-h-[52px] xl:min-h-0 py-4 xl:py-3 text-base xl:text-sm font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 shadow-[0_0_20px_rgba(249,115,22,0.25)] transition-all active:scale-[0.98] touch-manipulation disabled:opacity-70"
+                    className="rounded-xl min-h-[52px] xl:min-h-0 py-4 xl:py-3 text-base xl:text-sm font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 shadow-[0_0_20px_rgba(249,115,22,0.25)] transition-all active:scale-[0.98] touch-manipulation"
                     disabled={placing}
                     onClick={() => place("SHORT")}
                   >
-                    {placing ? "…" : "SHORT ↓"}
+                    SHORT ↓
                   </button>
                 </div>
 
                 {selectedPair && (
-                  <p className="hidden xl:block text-[11px] text-slate-500 text-center">
+                  <p className="text-[11px] text-slate-500 text-center">
                     {t("trade.entryPrice")}{" "}
                     <span className="font-mono text-slate-300">
                       {Number(selectedPair.currentPrice).toFixed(5)}
@@ -1067,8 +920,8 @@ function TradePageContent() {
                 )}
               </div>
             </div>
-            {/* Активные сделки — на мобильных под ордером, горизонтальный скролл карточек */}
-            <div className="shrink-0 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:overflow-visible overflow-x-hidden">
+            {/* Активные сделки — на мобильных: одна полоса, карточки уходят вправо со скроллом (не двигают ордер) */}
+            <div className="shrink-0 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:overflow-visible">
               <ActiveTrades />
             </div>
           </div>
@@ -1090,49 +943,36 @@ function ActiveTrades() {
   const active = useTradingStore((s) => s.activeTrades);
 
   return (
-<<<<<<< HEAD
-    <div className="flex flex-col min-h-0 flex-1 glass rounded-t-2xl xl:rounded-b-2xl p-3 xl:p-6">
-=======
-    <div className="flex flex-col min-h-0 flex-1 glass rounded-t-xl xl:rounded-b-2xl p-2.5 xl:p-6">
->>>>>>> 346535b5c6ca07f3075f719c0dc37cd9bc5235bd
-      <div className="flex items-center justify-between mb-2 xl:mb-3 shrink-0">
-        <h2 className="text-[10px] xl:text-xs font-semibold uppercase tracking-wider text-slate-400">
+    <div className="flex flex-col min-h-0 flex-1 glass rounded-t-2xl xl:rounded-b-2xl p-4 xl:p-6">
+      <div className="flex items-center justify-between mb-3 shrink-0">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
           {t("trade.activeTradesTitle")}
         </h2>
         {active.length > 0 && (
-          <span className="text-[9px] xl:text-[10px] text-slate-500">{active.length}</span>
+          <span className="text-[10px] text-slate-500">{active.length}</span>
         )}
       </div>
 
       {active.length === 0 ? (
-        <div className="text-[11px] xl:text-xs text-slate-500 py-2 xl:py-4 text-center">
+        <div className="text-xs text-slate-500 py-4 text-center">
           {t("trade.noActiveHint")}
         </div>
       ) : (
         <>
-          {/* Мобильные: компактная полоса, карточки вправо со скроллом */}
-<<<<<<< HEAD
+          {/* Мобильные: одна полоса, карточки уходят вправо за экран со скроллом */}
           <div className="xl:hidden overflow-x-auto overflow-y-hidden rounded-lg bg-slate-950/40 surface-scroll -mx-1 px-1">
-            <div className="flex gap-1.5 pb-1.5">
+            <div className="flex gap-2 pb-2">
               {active.map((trade) => (
                 <div
                   key={trade.id}
-                  className="flex shrink-0 items-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-slate-800/60 min-h-[40px]"
-=======
-          <div className="xl:hidden overflow-x-auto overflow-y-hidden rounded-lg bg-slate-950/40 surface-scroll -mx-0.5 px-0.5">
-            <div className="flex gap-1.5 pb-1">
-              {active.map((trade) => (
-                <div
-                  key={trade.id}
-                  className="flex shrink-0 items-center gap-1.5 py-1.5 px-2.5 rounded-lg bg-slate-800/60 min-h-[36px]"
->>>>>>> 346535b5c6ca07f3075f719c0dc37cd9bc5235bd
+                  className="flex shrink-0 items-center gap-2 py-2 px-3 rounded-lg bg-slate-800/60 min-h-[44px]"
                 >
-                  <div className="flex items-center gap-1 min-w-0">
-                    <span className="font-mono text-slate-100 text-[10px] truncate max-w-[50px]">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="font-mono text-slate-100 text-[11px] truncate">
                       {trade.tradingPair?.symbol ?? trade.tradingPairId}
                     </span>
                     <span
-                      className={`px-1 py-0.5 rounded text-[8px] font-medium shrink-0 ${
+                      className={`px-1 py-0.5 rounded text-[9px] font-medium shrink-0 ${
                         trade.direction === "LONG"
                           ? "bg-emerald-500/15 text-emerald-400"
                           : "bg-orange-500/15 text-orange-400"
@@ -1141,7 +981,7 @@ function ActiveTrades() {
                       {trade.direction}
                     </span>
                   </div>
-                  <span className="font-mono text-slate-300 text-[9px] shrink-0">${Number(trade.amount).toFixed(0)}</span>
+                  <span className="font-mono text-slate-300 text-[10px] shrink-0">${Number(trade.amount).toFixed(0)}</span>
                   <Countdown expiresAt={trade.expiresAt} compact />
                 </div>
               ))}
