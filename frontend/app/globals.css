@@ -120,7 +120,14 @@ body {
 
 /* Поля формы в едином glass-стиле */
 .input-glass {
-  @apply w-full rounded-xl glass py-3 px-4 text-sm text-slate-100 placeholder-slate-500 outline-none transition-all;
+  @apply w-full rounded-xl glass py-3 px-4 text-slate-100 placeholder-slate-500 outline-none transition-all;
+  /* text-base на мобильных — предотвращает авто-зум iOS при фокусе */
+  font-size: 16px;
+}
+@media (min-width: 1024px) {
+  .input-glass {
+    font-size: 0.875rem;
+  }
 }
 .input-glass:focus {
   border-color: var(--ring-accent);
