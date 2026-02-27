@@ -10,6 +10,7 @@ ENV NEXT_PUBLIC_MAIN_SITE_URL=$NEXT_PUBLIC_MAIN_SITE_URL
 COPY package.json tsconfig.json next.config.mjs tailwind.config.ts postcss.config.mjs ./
 COPY app ./app
 COPY components ./components
+COPY lib ./lib
 COPY public ./public
 
 RUN npm install

@@ -227,7 +227,7 @@ function getClientIp(req: express.Request): string | null {
 
 function getOsShortFromUserAgent(ua: string | undefined): string {
   if (!ua) return "Unknown";
-  const p = new UAParser(ua).getResult();
+  const p = new (UAParser as any)(ua).getResult();
   const os = p.os.name && p.os.version ? `${p.os.name} ${p.os.version}` : p.os.name || "";
   const browser = p.browser.name && p.browser.version ? `${p.browser.name} ${p.browser.version}` : p.browser.name || "";
   return [os, browser].filter(Boolean).join(" · ") || "Unknown";
@@ -1223,12 +1223,13 @@ app.get("/support/thread", authMiddleware, async (req: AuthRequest, res) => {
     });
     if (!thread) {
       thread = await prisma.supportThread.create({
-        data: { userId: req.userId },
+        data: { userId: req.userId! },
         include: {
           messages: { orderBy: { createdAt: "asc" } }
         }
       });
     }
+    if (!thread) return res.status(500).json({ message: "Ошибка загрузки чата" });
     return res.json({
       thread: { id: thread.id },
       messages: thread.messages.map(toSupportMessageRow)
@@ -1245,9 +1246,9 @@ app.post("/support/message", authMiddleware, async (req: AuthRequest, res) => {
     return res.status(400).json({ message: "Сообщение от 1 до 4000 символов" });
   }
   try {
-    let thread = await prisma.supportThread.findUnique({ where: { userId: req.userId } });
+    let thread = await prisma.supportThread.findUnique({ where: { userId: req.userId! } });
     if (!thread) {
-      thread = await prisma.supportThread.create({ data: { userId: req.userId } });
+      thread = await prisma.supportThread.create({ data: { userId: req.userId! } });
     }
     const message = await prisma.supportMessage.create({
       data: { threadId: thread.id, role: "user", authorId: req.userId, body: text }
@@ -2261,12 +2262,12 @@ app.get("/referral-partners/report", partnerAuthMiddleware, async (req: AuthRequ
     }
   );
   const totalClicks = totals.totalClicks;
-  totals.clickToFtd = totalClicks > 0 && totals.ftd > 0 ? Math.round((totals.ftd / totalClicks) * 10000) / 100 : 0;
-  totals.epc = totalClicks > 0 ? Math.round(((totals.rewardCpaConfirm + totals.incomeRevConfirm) / totalClicks) * 100) / 100 : 0;
+  const clickToFtd = totalClicks > 0 && totals.ftd > 0 ? Math.round((totals.ftd / totalClicks) * 10000) / 100 : 0;
+  const epc = totalClicks > 0 ? Math.round(((totals.rewardCpaConfirm + totals.incomeRevConfirm) / totalClicks) * 100) / 100 : 0;
 
   return res.json({
     rows,
-    totals,
+    totals: { ...totals, clickToFtd, epc },
     dateFrom: from.toISOString().slice(0, 10),
     dateTo: to.toISOString().slice(0, 10),
     groupBy
