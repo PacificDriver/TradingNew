@@ -209,7 +209,7 @@ function TradePageContent() {
     const ids = recentPairIds.slice(0, 3);
     return ids
       .map((id) => pairs.find((p) => p.id === id))
-      .filter((p): p is TradingPair => p != null);
+      .filter((p) => p != null);
   }, [pairs, recentPairIds]);
 
   // Синхронизация пары: при выборе в поиске store обновляется первым, URL — позже; не перезаписывать store по старому URL
@@ -652,10 +652,10 @@ function TradePageContent() {
             <div className="hidden xl:flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] surface-scroll shrink-0">
               <span className="text-slate-500 shrink-0">{t("trade.indicators")}</span>
               {[
-                { key: "ma" as const, label: "MA", on: showMA, set: (v: boolean) => setChartSettings({ showMA: v }) },
-                { key: "rsi" as const, label: "RSI", on: showRSI, set: (v: boolean) => setChartSettings({ showRSI: v }) },
-                { key: "macd" as const, label: "MACD", on: showMACD, set: (v: boolean) => setChartSettings({ showMACD: v }) },
-                { key: "bb" as const, label: "BB", on: showBB, set: (v: boolean) => setChartSettings({ showBB: v }) }
+                { key: "ma" as const, label: "MA", on: showMA, set: (v) => setChartSettings({ showMA: v }) },
+                { key: "rsi" as const, label: "RSI", on: showRSI, set: (v) => setChartSettings({ showRSI: v }) },
+                { key: "macd" as const, label: "MACD", on: showMACD, set: (v) => setChartSettings({ showMACD: v }) },
+                { key: "bb" as const, label: "BB", on: showBB, set: (v) => setChartSettings({ showBB: v }) }
               ].map(({ label, on, set }) => (
                 <button
                   key={label}
@@ -781,10 +781,10 @@ function TradePageContent() {
                   {mobileChartMenu === "indicators" && (
                     <div className="absolute top-full left-0 mt-1 min-w-[140px] py-1 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 shadow-xl z-30">
                       {[
-                        { key: "ma" as const, label: "MA", on: showMA, set: (v: boolean) => setChartSettings({ showMA: v }) },
-                        { key: "rsi" as const, label: "RSI", on: showRSI, set: (v: boolean) => setChartSettings({ showRSI: v }) },
-                        { key: "macd" as const, label: "MACD", on: showMACD, set: (v: boolean) => setChartSettings({ showMACD: v }) },
-                        { key: "bb" as const, label: "BB", on: showBB, set: (v: boolean) => setChartSettings({ showBB: v }) }
+                        { key: "ma" as const, label: "MA", on: showMA, set: (v) => setChartSettings({ showMA: v }) },
+                        { key: "rsi" as const, label: "RSI", on: showRSI, set: (v) => setChartSettings({ showRSI: v }) },
+                        { key: "macd" as const, label: "MACD", on: showMACD, set: (v) => setChartSettings({ showMACD: v }) },
+                        { key: "bb" as const, label: "BB", on: showBB, set: (v) => setChartSettings({ showBB: v }) }
                       ].map(({ label, on, set }) => (
                         <button
                           key={label}
