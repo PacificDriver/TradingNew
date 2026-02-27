@@ -9,7 +9,8 @@ import {
   useTradingStore,
   TradingPair,
   TradeDirection,
-  Trade
+  Trade,
+  type TradeStatus
 } from "../../store/useTradingStore";
 import { SettledResultOverlay } from "../../components/SettledResultOverlay";
 import { ChartResultFeedback } from "../../components/ChartResultFeedback";
@@ -75,6 +76,7 @@ function TradePageContent() {
   const upsertPrice = useTradingStore((s) => s.upsertPrice);
   const setActiveTrades = useTradingStore((s) => s.setActiveTrades);
   const setCompletedTrades = useTradingStore((s) => s.setCompletedTrades);
+  const applyTradeUpdate = useTradingStore((s) => s.applyTradeUpdate);
   const chartSettings = useTradingStore((s) => s.chartSettings);
   const setChartSettings = useTradingStore((s) => s.setChartSettings);
 
@@ -422,7 +424,7 @@ function TradePageContent() {
     setError(null);
     setPlacing(true);
     try {
-      const res = await apiFetch<{ trade: unknown; balance: number }>("/trade/open", {
+      const res = await apiFetch<{ trade?: Record<string, unknown>; balance: number }>("/trade/open", {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify({
@@ -434,6 +436,21 @@ function TradePageContent() {
       });
       if (user && res.balance != null) {
         setAuth(token ?? null, { ...user, demoBalance: res.balance });
+      }
+      if (res.trade && (res.trade.status as string) === "ACTIVE") {
+        const newTrade: Trade = {
+          id: res.trade.id as number,
+          tradingPairId: res.trade.tradingPairId as number,
+          amount: res.trade.amount as number,
+          direction: res.trade.direction as TradeDirection,
+          entryPrice: res.trade.entryPrice as number,
+          closePrice: (res.trade.closePrice as number | null) ?? null,
+          status: res.trade.status as TradeStatus,
+          expiresAt: res.trade.expiresAt as string,
+          createdAt: res.trade.createdAt as string,
+          tradingPair: selectedPair
+        };
+        applyTradeUpdate(newTrade);
       }
     } catch (err) {
       setError(getDisplayMessage(err, t));
