@@ -2761,6 +2761,7 @@ app.get(
         id: true,
         email: true,
         isAdmin: true,
+        demoBalance: true,
         createdAt: true,
         blockedAt: true,
         withdrawBlockedAt: true,
@@ -2770,9 +2771,54 @@ app.get(
     return res.json({
       users: users.map((u) => ({
         ...u,
+        demoBalance: Number(u.demoBalance),
         blockedAt: u.blockedAt?.toISOString() ?? null,
         withdrawBlockedAt: u.withdrawBlockedAt?.toISOString() ?? null
       }))
+    });
+  }
+);
+
+// --- Admin: изменить баланс пользователя ---
+app.patch(
+  "/admin/users/:id/balance",
+  authMiddleware,
+  adminMiddleware,
+  async (req: AuthRequest, res) => {
+    const targetId = Number(req.params.id);
+    if (!Number.isFinite(targetId)) {
+      return res.status(400).json({ message: "Invalid user id" });
+    }
+    const target = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: { id: true, demoBalance: true }
+    });
+    if (!target) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const body = req.body as { balance?: number };
+    const newBalance = typeof body.balance === "number" ? body.balance : parseFloat(String(body.balance ?? ""));
+    if (!Number.isFinite(newBalance) || newBalance < 0) {
+      return res.status(400).json({ message: "Balance must be a non-negative number" });
+    }
+    const balanceBefore = Number(target.demoBalance);
+    await prisma.$transaction(async (tx) => {
+      await (tx as PrismaClient).user.update({
+        where: { id: targetId },
+        data: { demoBalance: newBalance }
+      });
+      await createBalanceAudit(tx, {
+        userId: targetId,
+        type: "admin_adjust",
+        amount: newBalance - balanceBefore,
+        balanceBefore,
+        balanceAfter: newBalance,
+        refType: "admin",
+        refId: String(req.userId)
+      });
+    });
+    return res.json({
+      user: { id: targetId, demoBalance: newBalance }
     });
   }
 );

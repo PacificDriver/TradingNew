@@ -11,6 +11,7 @@ import { useLocale } from "../../lib/i18n";
 type AdminUser = {
   id: number;
   email: string;
+  demoBalance: number;
   isAdmin: boolean;
   createdAt: string;
   blockedAt: string | null;
@@ -47,6 +48,8 @@ export default function AdminPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [actingUserId, setActingUserId] = useState<number | null>(null);
+  const [balanceEditId, setBalanceEditId] = useState<number | null>(null);
+  const [balanceEditValue, setBalanceEditValue] = useState("");
 
   // Pairs
   const [pairs, setPairs] = useState<TradingPairRow[]>([]);
@@ -128,6 +131,35 @@ export default function AdminPage() {
       // ignore
     } finally {
       setReferralSaving(false);
+    }
+  }
+
+  async function setUserBalance(targetId: number, newBalance: number) {
+    if (!token) return;
+    setActingUserId(targetId);
+    try {
+      const { user } = await apiFetch<{ user: { id: number; demoBalance: number } }>(
+        `/admin/users/${targetId}/balance`,
+        {
+          method: "PATCH",
+          headers: authHeaders(token),
+          body: JSON.stringify({ balance: newBalance })
+        }
+      );
+      setUsers((prev) =>
+        prev.map((u) => (u.id === targetId ? { ...u, demoBalance: user.demoBalance } : u))
+      );
+      setBalanceEditId(null);
+      setBalanceEditValue("");
+    } catch (err) {
+      if (isAuthError(err)) {
+        clearAuth();
+        router.replace("/login");
+        return;
+      }
+      setUsersError((err as Error)?.message ?? t("admin.error"));
+    } finally {
+      setActingUserId(null);
     }
   }
 
@@ -307,6 +339,7 @@ export default function AdminPage() {
                     <tr>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">ID</th>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">Email</th>
+                      <th className="px-4 py-3 text-right text-slate-500 font-medium">Баланс</th>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">{t("admin.status")}</th>
                       <th className="px-4 py-3 text-right text-slate-500 font-medium">{t("admin.actions")}</th>
                     </tr>
@@ -316,6 +349,52 @@ export default function AdminPage() {
                       <tr key={u.id} className="hover:bg-slate-800/30">
                         <td className="px-4 py-3 font-mono text-slate-400">{u.id}</td>
                         <td className="px-4 py-3 text-slate-200 truncate max-w-[200px]">{u.email}</td>
+                        <td className="px-4 py-3 text-right">
+                          {balanceEditId === u.id ? (
+                            <span className="inline-flex items-center gap-2">
+                              <input
+                                type="number"
+                                step="any"
+                                min="0"
+                                value={balanceEditValue}
+                                onChange={(e) => setBalanceEditValue(e.target.value)}
+                                className="w-24 rounded border border-slate-600 bg-slate-800 px-2 py-1 text-sm text-slate-200"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const val = parseFloat(balanceEditValue);
+                                  if (Number.isFinite(val) && val >= 0) setUserBalance(u.id, val);
+                                }}
+                                disabled={actingUserId === u.id}
+                                className="rounded border border-emerald-500/50 bg-emerald-950/40 px-2 py-1 text-[11px] font-medium text-emerald-400 hover:bg-emerald-950/60 disabled:opacity-50"
+                              >
+                                {actingUserId === u.id ? "…" : "OK"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBalanceEditId(null);
+                                  setBalanceEditValue("");
+                                }}
+                                className="rounded border border-slate-600 px-2 py-1 text-[11px] font-medium text-slate-400 hover:bg-slate-800"
+                              >
+                                Отмена
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBalanceEditId(u.id);
+                                setBalanceEditValue(String(u.demoBalance ?? 0));
+                              }}
+                              className="font-mono text-slate-300 hover:text-accent transition-colors"
+                            >
+                              {Number(u.demoBalance ?? 0).toLocaleString()} $
+                            </button>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <span className="inline-flex flex-wrap gap-1">
                             {u.isAdmin && (
