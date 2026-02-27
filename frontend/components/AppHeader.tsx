@@ -94,6 +94,9 @@ export function AppHeader() {
           <Link href="/trade" className={linkClass("/trade")}>
             {t("header.trading")}
           </Link>
+          <Link href="/pairs" className={linkClass("/pairs")}>
+            {t("header.pairs")}
+          </Link>
           {navLinks.map((item) => (
             <Link
               key={item.href}

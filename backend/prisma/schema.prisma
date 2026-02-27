@@ -85,6 +85,7 @@ model TradingPair {
   id           Int           @id @default(autoincrement())
   symbol       String        @unique
   name         String
+  category     String        @default("crypto") // crypto | stablecoin
   currentPrice Decimal       @default(100.00)
   trades       Trade[]
   ohlcCandles  OhlcCandle[]

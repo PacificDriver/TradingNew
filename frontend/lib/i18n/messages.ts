@@ -18,6 +18,7 @@ export const DEFAULT_LOCALE: Locale = "ru";
 const messages: Record<Locale, Record<string, string>> = {
   ru: {
     "header.trading": "Торговля",
+    "header.pairs": "Пары",
     "header.options": "Опционы",
     "header.optionsDesc": "Бинарные опционы",
     "header.admin": "Админка",
@@ -38,6 +39,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "header.language": "Язык",
 
     "mobileNav.trade": "Торговля",
+    "mobileNav.pairs": "Пары",
     "mobileNav.history": "История",
     "mobileNav.profile": "Профиль",
     "mobileNav.deposit": "Пополнение",
@@ -151,8 +153,14 @@ const messages: Record<Locale, Record<string, string>> = {
     "trade.exit": "Выход",
     "trade.result": "Результат",
 
+    "pairs.pageTitle": "Торговые пары",
+    "pairs.pageSubtitle": "Реальный режим, обновление цен в реальном времени",
     "pairs.searchPlaceholder": "Поиск пар (BTC, ETH…)",
     "pairs.noResults": "Ничего не найдено",
+    "pairs.categoryAll": "Все",
+    "pairs.categoryCrypto": "Криптовалюты",
+    "pairs.categoryCurrencies": "Валюта",
+    "pairs.backToTrading": "К торговле",
     "pairs.recent": "Последние",
     "pairs.favorites": "Избранное",
     "pairs.allPairs": "Все пары",
@@ -306,6 +314,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "header.support": "Support",
     "header.adminPanel": "Admin",
     "header.logout": "Log out",
+    "header.pairs": "Pairs",
     "header.login": "Log in",
     "header.register": "Sign up",
     "header.guest": "Guest",
@@ -316,6 +325,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "header.language": "Language",
 
     "mobileNav.trade": "Trade",
+    "mobileNav.pairs": "Pairs",
     "mobileNav.history": "History",
     "mobileNav.profile": "Profile",
     "mobileNav.deposit": "Deposit",
@@ -429,8 +439,14 @@ const messages: Record<Locale, Record<string, string>> = {
     "trade.exit": "Exit",
     "trade.result": "Result",
 
+    "pairs.pageTitle": "Trading pairs",
+    "pairs.pageSubtitle": "Real-time price updates",
     "pairs.searchPlaceholder": "Search pairs (BTC, ETH…)",
     "pairs.noResults": "No results",
+    "pairs.categoryAll": "All",
+    "pairs.categoryCrypto": "Cryptocurrencies",
+    "pairs.categoryCurrencies": "Currencies",
+    "pairs.backToTrading": "Back to trading",
     "pairs.recent": "Recent",
     "pairs.favorites": "Favorites",
     "pairs.allPairs": "All pairs",
@@ -574,6 +590,7 @@ const messages: Record<Locale, Record<string, string>> = {
   },
   es: {
     "header.trading": "Trading",
+    "header.pairs": "Pares",
     "header.options": "Opciones",
     "header.optionsDesc": "Opciones binarias",
     "header.admin": "Admin",
@@ -594,6 +611,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "header.language": "Idioma",
 
     "mobileNav.trade": "Trading",
+    "mobileNav.pairs": "Pares",
     "mobileNav.history": "Historial",
     "mobileNav.profile": "Perfil",
     "mobileNav.deposit": "Depósito",
@@ -707,8 +725,14 @@ const messages: Record<Locale, Record<string, string>> = {
     "trade.exit": "Salida",
     "trade.result": "Resultado",
 
+    "pairs.pageTitle": "Pares de trading",
+    "pairs.pageSubtitle": "Actualización de precios en tiempo real",
     "pairs.searchPlaceholder": "Buscar pares (BTC, ETH…)",
     "pairs.noResults": "Sin resultados",
+    "pairs.categoryAll": "Todos",
+    "pairs.categoryCrypto": "Criptomonedas",
+    "pairs.categoryCurrencies": "Monedas",
+    "pairs.backToTrading": "Volver a trading",
     "pairs.recent": "Recientes",
     "pairs.favorites": "Favoritos",
     "pairs.allPairs": "Todos los pares",

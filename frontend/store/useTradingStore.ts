@@ -19,6 +19,7 @@ type TradingPair = {
   id: number;
   symbol: string;
   name: string;
+  category?: string; // crypto | stablecoin
   currentPrice: number;
 };
 

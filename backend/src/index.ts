@@ -371,7 +371,10 @@ async function requireNotBlockedMiddleware(
   next();
 }
 
-// 100 популярных торговых пар (крипто + форекс)
+// Категории: crypto | stablecoin (стейблкоины = валюта, быстрые и надёжные из Binance)
+const STABLECOIN_SYMBOLS = new Set(["USDCUSDT", "DAIUSDT", "TUSDUSDT", "BUSDUSDT", "USDPUSDT", "FDUSDUSDT"]);
+
+// 100+ популярных торговых пар (крипто + стейблкоины)
 const POPULAR_TRADING_PAIRS: { symbol: string; name: string; currentPrice: number }[] = [
   { symbol: "BTCUSDT", name: "Bitcoin / Tether", currentPrice: 60000 },
   { symbol: "ETHUSDT", name: "Ethereum / Tether", currentPrice: 3000 },
@@ -379,6 +382,9 @@ const POPULAR_TRADING_PAIRS: { symbol: string; name: string; currentPrice: numbe
   { symbol: "SOLUSDT", name: "Solana / Tether", currentPrice: 140 },
   { symbol: "XRPUSDT", name: "XRP / Tether", currentPrice: 0.52 },
   { symbol: "USDCUSDT", name: "USD Coin / Tether", currentPrice: 1 },
+  { symbol: "DAIUSDT", name: "Dai / Tether", currentPrice: 1 },
+  { symbol: "TUSDUSDT", name: "TrueUSD / Tether", currentPrice: 1 },
+  { symbol: "FDUSDUSDT", name: "First Digital USD / Tether", currentPrice: 1 },
   { symbol: "ADAUSDT", name: "Cardano / Tether", currentPrice: 0.45 },
   { symbol: "DOGEUSDT", name: "Dogecoin / Tether", currentPrice: 0.08 },
   { symbol: "AVAXUSDT", name: "Avalanche / Tether", currentPrice: 35 },
@@ -729,9 +735,17 @@ class PriceService {
     const existingSymbols = new Set(existingAfter.map((p) => p.symbol));
     const toCreate = POPULAR_TRADING_PAIRS.filter(
       (row) => !existingSymbols.has(row.symbol)
-    );
+    ).map((row) => ({
+      symbol: row.symbol,
+      name: row.name,
+      currentPrice: row.currentPrice,
+      category: STABLECOIN_SYMBOLS.has(row.symbol) ? "stablecoin" : "crypto"
+    }));
     if (toCreate.length > 0) {
       await prisma.tradingPair.createMany({ data: toCreate });
+    }
+    for (const symbol of STABLECOIN_SYMBOLS) {
+      await prisma.tradingPair.updateMany({ where: { symbol }, data: { category: "stablecoin" } });
     }
 
     const allPairs = await prisma.tradingPair.findMany({
@@ -1865,8 +1879,8 @@ app.get("/referral-partners/stats", partnerAuthMiddleware, async (req: AuthReque
     where: { id: req.referralPartnerId },
     select: { referralCode: true, referralClicks: true, referralBalance: true }
   });
-  const baseUrl = (req.get("origin") || process.env.FRONTEND_ORIGIN?.split(",")[0] || "http://localhost:3000").replace(/\/$/, "");
-  const mainSite = process.env.MAIN_SITE_URL || baseUrl.replace(/\/referral.*/, "").replace(/\/$/, "") || "http://localhost:3000";
+  // Реферальная ссылка — всегда на основной платформу (lk.auraretrade.com), не на tbofin.com
+  const mainSite = (process.env.MAIN_SITE_URL || "https://lk.auraretrade.com").replace(/\/$/, "");
   const referralLink = `${mainSite}/register?ref=${partner?.referralCode ?? ""}`;
   const totalLossesAmount = Number(totalLosses?._sum?.amount ?? 0);
   const totalEarnings = Number(partner?.referralBalance ?? 0);

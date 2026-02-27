@@ -7,6 +7,7 @@ import { useDepositModal } from "./DepositModal";
 
 const NAV_ITEMS = [
   { href: "/trade", key: "mobileNav.trade", icon: "chart" },
+  { href: "/pairs", key: "mobileNav.pairs", icon: "pairs" },
   { href: "/history", key: "mobileNav.history", icon: "history" },
   { href: "/profile", key: "mobileNav.profile", icon: "profile" },
   { href: "/deposit", key: "mobileNav.deposit", icon: "wallet", openDepositModal: true }
@@ -15,6 +16,12 @@ const NAV_ITEMS = [
 function NavIcon({ icon }: { icon: string }) {
   const className = "w-6 h-6 shrink-0";
   switch (icon) {
+    case "pairs":
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+      );
     case "chart":
       return (
         <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
