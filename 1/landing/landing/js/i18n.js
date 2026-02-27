@@ -1,283 +1,288 @@
+/**
+ * Simple i18n for landing page — EN / RU
+ */
 (function () {
-  "use strict";
+  'use strict';
 
-  var STORAGE_KEY = "aura-landing-lang";
-  var SUPPORTED = ["ru", "en", "es"];
-  var DEFAULT = "ru";
-
-  var t = {
+  const translations = {
     ru: {
-      nav: { prizes: "Призы", how: "Как участвовать", faq: "FAQ", startTrading: "Начать торговать" },
-      hero: {
-        badge: "Aura Trade · Grand Launch 2026",
-        title: "Торгуй и {win}<br />премиальные призы",
-        titleWin: "выигрывай",
-        sub: "Мы открылись и разыгрываем среди активных трейдеров: <strong>2 квартиры</strong> в столице вашей страны, <strong>3 автомобиля BMW&nbsp;M5&nbsp;CS</strong> и <strong>3 денежных приза</strong> — $100&nbsp;000, $50&nbsp;000 и $20&nbsp;000.",
-        startTrading: "Начать торговать",
-        more: "Подробнее ↓"
-      },
-      kpi: { prizes: "ключевых призов", prizeFund: "общий призовой фонд" },
-      section: {
-        prizesTag: "Розыгрыш",
-        prizesTitle: "Активным трейдерам —<br />лучшие призы",
-        prizesSub: "Чем больше сделок проводит трейдер — тем больше получает очков. Система рейтинга обновляется в реальном времени.",
-        howTag: "Как это работает",
-        howTitle: "Три шага до участия<br />в розыгрыше",
-        statsTag: "Статистика",
-        statsTitle: "Логика начисления очков",
-        statsSub: "Простая механика: торгуйте, копите очки и поднимайтесь выше в рейтинге.",
-        faqTag: "FAQ",
-        faqTitle: "Часто задаваемые вопросы"
-      },
-      prize: {
-        apartments: "Квартиры",
-        apartmentsDesc: "В столице вашей страны. Премиальная недвижимость для лучших участников.",
-        apartmentsValue: "Главный приз",
-        bmw: "BMW M5 CS",
-        bmwDesc: "Автомобили премиум-класса. Скорость, мощность и статус для победителей.",
-        bmwValue: "635 л.с.",
-        money: "Денежные призы",
-        moneyDesc: "$100&nbsp;000, $50&nbsp;000 и $20&nbsp;000 — прямо на ваш счёт.",
-        moneyValue: "$170 000"
-      },
-      step: {
-        s1: "Зарегистрируйтесь",
-        s1Desc: "Создайте аккаунт за 30 секунд на платформе Aura Trade.",
-        s2: "Торгуйте",
-        s2Desc: "Открывайте сделки по бинарным опционам. Каждая сделка = очки в рейтинге.",
-        s3: "Выигрывайте",
-        s3Desc: "Поднимайтесь в рейтинге. Топовые места получают главные призы."
-      },
-      chart: { activity: "Прогноз активности по неделям", points: "Система очков", prizeFund: "Призовой фонд" },
-      bar: { deal1: "1 сделка", deal50: "50 сделок", deal100: "100 сделок", deal250: "250 сделок" },
-      legend: { apartments: "Квартиры", bmw: "BMW M5 CS", money: "Деньги" },
-      faq: {
-        q1: "Приветственный бонус $100",
-        a1: "До 01.03.2026 — приветственный бонус $100 каждому трейдеру. Зарегистрируйтесь на Aura Trade и получите бонус $100 на торговый счёт для старта. Вывод доступен после 250 сделок.",
-        q2: "Как попасть в розыгрыш?",
-        a2: "Достаточно зарегистрироваться и активно торговать на Aura Trade. Чем больше сделок — тем больше очков и тем выше ваше место в рейтинге.",
-        q3: "Когда можно вывести бонус $100?",
-        a3: "Приветственный бонус участвует в торговом обороте. Вывод становится доступен после выполнения 250 сделок на платформе.",
-        q4: "Какие призы считаются главными?",
-        a4: "Главные призы — 2 квартиры в столице вашей страны и 3 автомобиля BMW M5 CS. Денежные призы распределяются между следующими местами.",
-        q5: "Как начисляются очки?",
-        a5: "За каждую завершённую сделку начисляются очки. За серии сделок предусмотрены бонусные множители. Рейтинг обновляется в реальном времени.",
-        q6: "Можно ли участвовать из любой страны?",
-        a6: "Да, Aura Trade доступна для трейдеров по всему миру. Квартира разыгрывается в столице страны проживания победителя.",
-        q7: "Когда состоится розыгрыш?",
-        a7: "Дата финального розыгрыша будет объявлена дополнительно. Следите за обновлениями в личном кабинете."
-      },
-      cta: { title: "Запускайте торговлю<br />сейчас", sub: "Боритесь за 2 квартиры, BMW&nbsp;M5&nbsp;CS и денежные призы на Aura Trade.", btn: "Открыть аккаунт" },
-      footer: { copy: "© 2026 Aura Trade. Все права защищены.", terms: "Условия", policy: "Политика", contacts: "Контакты" }
+      // Nav
+      navPrizes: 'Призы',
+      navHow: 'Как участвовать',
+      navFaq: 'FAQ',
+      navCta: 'Начать торговать',
+      // Hero
+      heroTitle: 'Торгуй и <span class="hero-title-underline">выигрывай</span><br />премиальные призы',
+      heroSub: 'Мы открылись и разыгрываем среди активных трейдеров: <strong>2 квартиры</strong> в столице вашей страны, <strong>3 автомобиля BMW&nbsp;M5&nbsp;CS</strong> и <strong>3 денежных приза</strong> — $100&nbsp;000, $50&nbsp;000 и $20&nbsp;000.',
+      heroCta: 'Начать торговать',
+      heroMore: 'Подробнее ↓',
+      // KPI
+      kpiLabel1: 'ключевых призов',
+      kpiLabel2: 'общий призовой фонд',
+      // Prizes
+      prizeTag: 'Розыгрыш',
+      prizeTitle: 'Активным трейдерам —<br />лучшие призы',
+      prizeSub: 'Чем больше сделок проводит трейдер — тем больше получает очков. Система рейтинга обновляется в реальном времени.',
+      prizeApartments: 'Квартиры',
+      prizeApartmentsDesc: 'В столице вашей страны. Премиальная недвижимость для лучших участников.',
+      prizeGrand: 'Главный приз',
+      prizeBmwDesc: 'Автомобили премиум-класса. Скорость, мощность и статус для победителей.',
+      prizeHp: '635 л.с.',
+      prizeCash: 'Денежные призы',
+      prizeCashDesc: '$100&nbsp;000, $50&nbsp;000 и $20&nbsp;000 — прямо на ваш счёт.',
+      // How
+      howTag: 'Как это работает',
+      howTitle: 'Три шага до участия<br />в розыгрыше',
+      howStep1: 'Зарегистрируйтесь',
+      howStep1Desc: 'Создайте аккаунт за 30 секунд на платформе Aura Trade.',
+      howStep2: 'Торгуйте',
+      howStep2Desc: 'Открывайте сделки по бинарным опционам. Каждая сделка = очки в рейтинге.',
+      howStep3: 'Выигрывайте',
+      howStep3Desc: 'Поднимайтесь в рейтинге. Топовые места получают главные призы.',
+      // Stats
+      statsTag: 'Статистика',
+      statsTitle: 'Логика начисления очков',
+      statsSub: 'Простая механика: торгуйте, копите очки и поднимайтесь выше в рейтинге.',
+      statsChart1: 'Прогноз активности по неделям',
+      statsChart2: 'Система очков',
+      statsBar1: '1 сделка',
+      statsBar2: '50 сделок',
+      statsBar3: '100 сделок',
+      statsBar4: '250 сделок',
+      statsPool: 'Призовой фонд',
+      statsLegend1: 'Квартиры <strong>40%</strong>',
+      statsLegend2: 'BMW M5 CS <strong>30%</strong>',
+      statsLegend3: 'Деньги <strong>30%</strong>',
+      // FAQ
+      faqTitle: 'Часто задаваемые вопросы',
+      faq1Q: 'Приветственный бонус $100',
+      faq1A: 'До 01.03.2026 — приветственный бонус $100 каждому трейдеру. Зарегистрируйтесь на Aura Trade и получите бонус $100 на торговый счёт для старта. Вывод доступен после 250 сделок.',
+      faq2Q: 'Как попасть в розыгрыш?',
+      faq2A: 'Достаточно зарегистрироваться и активно торговать на Aura Trade. Чем больше сделок — тем больше очков и тем выше ваше место в рейтинге.',
+      faq3Q: 'Когда можно вывести бонус $100?',
+      faq3A: 'Приветственный бонус участвует в торговом обороте. Вывод становится доступен после выполнения 250 сделок на платформе.',
+      faq4Q: 'Какие призы считаются главными?',
+      faq4A: 'Главные призы — 2 квартиры в столице вашей страны и 3 автомобиля BMW M5 CS. Денежные призы распределяются между следующими местами.',
+      faq5Q: 'Как начисляются очки?',
+      faq5A: 'За каждую завершённую сделку начисляются очки. За серии сделок предусмотрены бонусные множители. Рейтинг обновляется в реальном времени.',
+      faq6Q: 'Можно ли участвовать из любой страны?',
+      faq6A: 'Да, Aura Trade доступна для трейдеров по всему миру. Квартира разыгрывается в столице страны проживания победителя.',
+      faq7Q: 'Когда состоится розыгрыш?',
+      faq7A: 'Дата финального розыгрыша будет объявлена дополнительно. Следите за обновлениями в личном кабинете.',
+      // Final CTA
+      finalTitle: 'Запускайте торговлю<br />сейчас',
+      finalSub: 'Боритесь за 2 квартиры, BMW&nbsp;M5&nbsp;CS и денежные призы на Aura Trade.',
+      finalCta: 'Открыть аккаунт',
+      // Footer
+      footerCopy: '© 2026 Aura Trade. Все права защищены.',
+      footerTerms: 'Условия',
+      footerPolicy: 'Политика',
+      footerContact: 'Контакты',
+      // Meta
+      metaDesc: 'Aura Trade — премиальная платформа бинарных опционов. Розыгрыш 2 квартир, 3 BMW M5 CS и денежных призов.',
     },
     en: {
-      nav: { prizes: "Prizes", how: "How to Participate", faq: "FAQ", startTrading: "Start Trading" },
-      hero: {
-        badge: "Aura Trade · Grand Launch 2026",
-        title: "Trade and {win}<br />premium prizes",
-        titleWin: "win",
-        sub: "We're live and giving away to active traders: <strong>2 apartments</strong> in your country's capital, <strong>3 BMW&nbsp;M5&nbsp;CS cars</strong> and <strong>3 cash prizes</strong> — $100,000, $50,000 and $20,000.",
-        startTrading: "Start Trading",
-        more: "Learn More ↓"
-      },
-      kpi: { prizes: "key prizes", prizeFund: "total prize pool" },
-      section: {
-        prizesTag: "Giveaway",
-        prizesTitle: "Best prizes for<br />active traders",
-        prizesSub: "The more trades you make, the more points you earn. The ranking updates in real time.",
-        howTag: "How it works",
-        howTitle: "Three steps to<br />join the giveaway",
-        statsTag: "Statistics",
-        statsTitle: "Points scoring logic",
-        statsSub: "Simple mechanics: trade, earn points and climb the ranking.",
-        faqTag: "FAQ",
-        faqTitle: "Frequently asked questions"
-      },
-      prize: {
-        apartments: "Apartments",
-        apartmentsDesc: "In your country's capital. Premium real estate for top participants.",
-        apartmentsValue: "Grand Prize",
-        bmw: "BMW M5 CS",
-        bmwDesc: "Premium-class cars. Speed, power and status for winners.",
-        bmwValue: "635 hp",
-        money: "Cash Prizes",
-        moneyDesc: "$100,000, $50,000 and $20,000 — straight to your account.",
-        moneyValue: "$170,000"
-      },
-      step: {
-        s1: "Register",
-        s1Desc: "Create an account in 30 seconds on the Aura Trade platform.",
-        s2: "Trade",
-        s2Desc: "Open binary options trades. Each trade = points in the ranking.",
-        s3: "Win",
-        s3Desc: "Climb the ranking. Top positions get the grand prizes."
-      },
-      chart: { activity: "Weekly activity forecast", points: "Points system", prizeFund: "Prize fund" },
-      bar: { deal1: "1 trade", deal50: "50 trades", deal100: "100 trades", deal250: "250 trades" },
-      legend: { apartments: "Apartments", bmw: "BMW M5 CS", money: "Cash" },
-      faq: {
-        q1: "Welcome bonus $100",
-        a1: "Until 01.03.2026 — $100 welcome bonus for every trader. Register on Aura Trade and get a $100 bonus to your trading account to start. Withdrawal available after 250 trades.",
-        q2: "How do I enter the giveaway?",
-        a2: "Just register and trade actively on Aura Trade. The more trades you make, the more points and the higher your ranking.",
-        q3: "When can I withdraw the $100 bonus?",
-        a3: "The welcome bonus is part of the trading turnover. Withdrawal becomes available after completing 250 trades on the platform.",
-        q4: "What are the main prizes?",
-        a4: "The main prizes are 2 apartments in your country's capital and 3 BMW M5 CS cars. Cash prizes are distributed among the following places.",
-        q5: "How are points awarded?",
-        a5: "Points are awarded for each completed trade. Bonus multipliers apply for trade streaks. The ranking updates in real time.",
-        q6: "Can I participate from any country?",
-        a6: "Yes, Aura Trade is available to traders worldwide. The apartment is drawn in the winner's country of residence capital.",
-        q7: "When will the draw take place?",
-        a7: "The final draw date will be announced later. Follow updates in your personal account."
-      },
-      cta: { title: "Start trading<br />now", sub: "Compete for 2 apartments, BMW&nbsp;M5&nbsp;CS and cash prizes on Aura Trade.", btn: "Open Account" },
-      footer: { copy: "© 2026 Aura Trade. All rights reserved.", terms: "Terms", policy: "Privacy", contacts: "Contacts" }
+      navPrizes: 'Prizes',
+      navHow: 'How to participate',
+      navFaq: 'FAQ',
+      navCta: 'Start Trading',
+      heroTitle: 'Trade and <span class="hero-title-underline">win</span><br />premium prizes',
+      heroSub: "We've launched and are giving away to active traders: <strong>2 apartments</strong> in the capital of your country, <strong>3 BMW&nbsp;M5&nbsp;CS cars</strong> and <strong>3 cash prizes</strong> — $100,000, $50,000 and $20,000.",
+      heroCta: 'Start Trading',
+      heroMore: 'Learn more ↓',
+      kpiLabel1: 'key prizes',
+      kpiLabel2: 'total prize pool',
+      prizeTag: 'Giveaway',
+      prizeTitle: 'Best prizes for<br />active traders',
+      prizeSub: 'The more trades a trader makes — the more points they earn. Ranking updates in real time.',
+      prizeApartments: 'Apartments',
+      prizeApartmentsDesc: 'In the capital of your country. Premium real estate for top participants.',
+      prizeGrand: 'Grand prize',
+      prizeBmwDesc: 'Premium-class cars. Speed, power and status for winners.',
+      prizeHp: '635 hp',
+      prizeCash: 'Cash prizes',
+      prizeCashDesc: '$100,000, $50,000 and $20,000 — straight to your account.',
+      howTag: 'How it works',
+      howTitle: 'Three steps to enter<br />the giveaway',
+      howStep1: 'Register',
+      howStep1Desc: 'Create an account in 30 seconds on the Aura Trade platform.',
+      howStep2: 'Trade',
+      howStep2Desc: 'Open binary options trades. Each trade = points in the ranking.',
+      howStep3: 'Win',
+      howStep3Desc: 'Climb the ranking. Top places get the grand prizes.',
+      statsTag: 'Statistics',
+      statsTitle: 'Points scoring logic',
+      statsSub: 'Simple mechanics: trade, accumulate points and climb the ranking.',
+      statsChart1: 'Weekly activity forecast',
+      statsChart2: 'Points system',
+      statsBar1: '1 trade',
+      statsBar2: '50 trades',
+      statsBar3: '100 trades',
+      statsBar4: '250 trades',
+      statsPool: 'Prize pool',
+      statsLegend1: 'Apartments <strong>40%</strong>',
+      statsLegend2: 'BMW M5 CS <strong>30%</strong>',
+      statsLegend3: 'Cash <strong>30%</strong>',
+      faqTitle: 'Frequently Asked Questions',
+      faq1Q: 'Welcome bonus $100',
+      faq1A: 'Until 03/01/2026 — $100 welcome bonus for every trader. Register on Aura Trade and get $100 bonus to your trading account to start. Withdrawal available after 250 trades.',
+      faq2Q: 'How to enter the giveaway?',
+      faq2A: 'Just register and trade actively on Aura Trade. The more trades — the more points and the higher your place in the ranking.',
+      faq3Q: 'When can I withdraw the $100 bonus?',
+      faq3A: 'The welcome bonus participates in trading turnover. Withdrawal becomes available after completing 250 trades on the platform.',
+      faq4Q: 'What are the grand prizes?',
+      faq4A: 'The grand prizes are 2 apartments in the capital of your country and 3 BMW M5 CS cars. Cash prizes are distributed among the following places.',
+      faq5Q: 'How are points awarded?',
+      faq5A: 'Points are awarded for each completed trade. Bonus multipliers are provided for trade series. The ranking updates in real time.',
+      faq6Q: 'Can I participate from any country?',
+      faq6A: 'Yes, Aura Trade is available for traders worldwide. The apartment is drawn in the capital of the winner\'s country of residence.',
+      faq7Q: 'When will the giveaway take place?',
+      faq7A: 'The date of the final giveaway will be announced later. Follow updates in your personal account.',
+      finalTitle: 'Launch trading<br />now',
+      finalSub: 'Compete for 2 apartments, BMW&nbsp;M5&nbsp;CS and cash prizes on Aura Trade.',
+      finalCta: 'Open account',
+      footerCopy: '© 2026 Aura Trade. All rights reserved.',
+      footerTerms: 'Terms',
+      footerPolicy: 'Privacy',
+      footerContact: 'Contact',
+      metaDesc: 'Aura Trade — premium binary options platform. Giveaway of 2 apartments, 3 BMW M5 CS and cash prizes.',
     },
-    es: {
-      nav: { prizes: "Premios", how: "Cómo participar", faq: "FAQ", startTrading: "Empezar a operar" },
-      hero: {
-        badge: "Aura Trade · Grand Launch 2026",
-        title: "Opera y {win}<br />premios premium",
-        titleWin: "gana",
-        sub: "Estamos en vivo y sorteamos entre traders activos: <strong>2 apartamentos</strong> en la capital de tu país, <strong>3 BMW&nbsp;M5&nbsp;CS</strong> y <strong>3 premios en efectivo</strong> — $100.000, $50.000 y $20.000.",
-        startTrading: "Empezar a operar",
-        more: "Saber más ↓"
-      },
-      kpi: { prizes: "premios clave", prizeFund: "fondo de premios total" },
-      section: {
-        prizesTag: "Sorteo",
-        prizesTitle: "Mejores premios para<br />traders activos",
-        prizesSub: "Cuantas más operaciones hagas, más puntos ganas. El ranking se actualiza en tiempo real.",
-        howTag: "Cómo funciona",
-        howTitle: "Tres pasos para<br />participar en el sorteo",
-        statsTag: "Estadísticas",
-        statsTitle: "Lógica de puntos",
-        statsSub: "Mecánica simple: opera, acumula puntos y sube en el ranking.",
-        faqTag: "FAQ",
-        faqTitle: "Preguntas frecuentes"
-      },
-      prize: {
-        apartments: "Apartamentos",
-        apartmentsDesc: "En la capital de tu país. Inmuebles premium para los mejores participantes.",
-        apartmentsValue: "Gran premio",
-        bmw: "BMW M5 CS",
-        bmwDesc: "Automóviles premium. Velocidad, potencia y estatus para los ganadores.",
-        bmwValue: "635 hp",
-        money: "Premios en efectivo",
-        moneyDesc: "$100.000, $50.000 y $20.000 — directo a tu cuenta.",
-        moneyValue: "$170.000"
-      },
-      step: {
-        s1: "Regístrate",
-        s1Desc: "Crea una cuenta en 30 segundos en la plataforma Aura Trade.",
-        s2: "Opera",
-        s2Desc: "Abre operaciones de opciones binarias. Cada operación = puntos en el ranking.",
-        s3: "Gana",
-        s3Desc: "Sube en el ranking. Las primeras posiciones obtienen los grandes premios."
-      },
-      chart: { activity: "Pronóstico de actividad semanal", points: "Sistema de puntos", prizeFund: "Fondo de premios" },
-      bar: { deal1: "1 operación", deal50: "50 operaciones", deal100: "100 operaciones", deal250: "250 operaciones" },
-      legend: { apartments: "Apartamentos", bmw: "BMW M5 CS", money: "Efectivo" },
-      faq: {
-        q1: "Bono de bienvenida $100",
-        a1: "Hasta el 01.03.2026 — bono de bienvenida de $100 para cada trader. Regístrate en Aura Trade y obtén un bono de $100 en tu cuenta de trading para empezar. Retiro disponible después de 250 operaciones.",
-        q2: "¿Cómo participo en el sorteo?",
-        a2: "Basta con registrarse y operar activamente en Aura Trade. Cuantas más operaciones hagas, más puntos y mayor posición en el ranking.",
-        q3: "¿Cuándo puedo retirar el bono de $100?",
-        a3: "El bono de bienvenida forma parte del volumen de operaciones. El retiro está disponible después de completar 250 operaciones en la plataforma.",
-        q4: "¿Cuáles son los premios principales?",
-        a4: "Los premios principales son 2 apartamentos en la capital de tu país y 3 BMW M5 CS. Los premios en efectivo se distribuyen entre los siguientes puestos.",
-        q5: "¿Cómo se otorgan los puntos?",
-        a5: "Se otorgan puntos por cada operación completada. Hay multiplicadores de bonificación para rachas de operaciones. El ranking se actualiza en tiempo real.",
-        q6: "¿Puedo participar desde cualquier país?",
-        a6: "Sí, Aura Trade está disponible para traders de todo el mundo. El apartamento se sortea en la capital del país de residencia del ganador.",
-        q7: "¿Cuándo será el sorteo?",
-        a7: "La fecha del sorteo final se anunciará más adelante. Sigue las actualizaciones en tu cuenta personal."
-      },
-      cta: { title: "Empieza a operar<br />ahora", sub: "Compite por 2 apartamentos, BMW&nbsp;M5&nbsp;CS y premios en efectivo en Aura Trade.", btn: "Abrir cuenta" },
-      footer: { copy: "© 2026 Aura Trade. Todos los derechos reservados.", terms: "Términos", policy: "Privacidad", contacts: "Contacto" }
-    }
   };
 
-  function get(lang, path) {
-    var keys = path.split(".");
-    var obj = t[lang] || t[DEFAULT];
-    for (var i = 0; i < keys.length && obj; i++) obj = obj[keys[i]];
-    return obj != null ? String(obj) : path;
-  }
+  const STORAGE_KEY = 'aura-lang';
+  const DEFAULT_LANG = 'ru';
 
-  function detectLang() {
-    try {
-      var saved = localStorage.getItem(STORAGE_KEY);
-      if (saved && SUPPORTED.indexOf(saved) !== -1) return saved;
-      var browser = (navigator.language || navigator.userLanguage || "").toLowerCase();
-      if (browser.indexOf("es") === 0) return "es";
-      if (browser.indexOf("en") === 0) return "en";
-    } catch (e) {}
-    return DEFAULT;
+  function getLang() {
+    return localStorage.getItem(STORAGE_KEY) || DEFAULT_LANG;
   }
 
   function setLang(lang) {
-    if (SUPPORTED.indexOf(lang) === -1) return;
-    window.i18n.lang = lang;
-    try { localStorage.setItem(STORAGE_KEY, lang); } catch (e) {}
-    document.documentElement.lang = lang === "ru" ? "ru" : lang === "es" ? "es" : "en";
-    applyLang(lang);
-    updateSwitcher(lang);
-    if (typeof window.onLangChange === "function") window.onLangChange(lang);
+    if (!translations[lang]) return;
+    localStorage.setItem(STORAGE_KEY, lang);
   }
 
-  function applyLang(lang) {
-    var L = t[lang] || t[DEFAULT];
-    document.querySelectorAll("[data-i18n]").forEach(function (el) {
-      var key = el.getAttribute("data-i18n");
-      var html = el.hasAttribute("data-i18n-html");
-      var val = get(lang, key);
-      if (key === "hero.title") val = val.replace("{win}", "<span class=\"hero-title-underline\">" + L.hero.titleWin + "</span>");
-      if (html) el.innerHTML = val; else el.textContent = val;
-    });
-    document.querySelectorAll("[data-i18n-placeholder]").forEach(function (el) {
-      var key = el.getAttribute("data-i18n-placeholder");
-      el.setAttribute("placeholder", get(lang, key));
-    });
+  function apply() {
+    const lang = getLang();
+    const t = translations[lang];
+    if (!t) return;
+
+    document.documentElement.lang = lang;
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) metaDesc.content = t.metaDesc;
+
+    const map = {
+      '[data-i18n="navPrizes"]': t.navPrizes,
+      '[data-i18n="navHow"]': t.navHow,
+      '[data-i18n="navFaq"]': t.navFaq,
+      '[data-i18n="navCta"]': t.navCta,
+      '[data-i18n="heroTitle"]': t.heroTitle,
+      '[data-i18n="heroSub"]': t.heroSub,
+      '[data-i18n="heroCta"]': t.heroCta,
+      '[data-i18n="heroMore"]': t.heroMore,
+      '[data-i18n="kpiLabel1"]': t.kpiLabel1,
+      '[data-i18n="kpiLabel2"]': t.kpiLabel2,
+      '[data-i18n="prizeTag"]': t.prizeTag,
+      '[data-i18n="prizeTitle"]': t.prizeTitle,
+      '[data-i18n="prizeSub"]': t.prizeSub,
+      '[data-i18n="prizeApartments"]': t.prizeApartments,
+      '[data-i18n="prizeApartmentsDesc"]': t.prizeApartmentsDesc,
+      '[data-i18n="prizeGrand"]': t.prizeGrand,
+      '[data-i18n="prizeBmwDesc"]': t.prizeBmwDesc,
+      '[data-i18n="prizeHp"]': t.prizeHp,
+      '[data-i18n="prizeCash"]': t.prizeCash,
+      '[data-i18n="prizeCashDesc"]': t.prizeCashDesc,
+      '[data-i18n="howTag"]': t.howTag,
+      '[data-i18n="howTitle"]': t.howTitle,
+      '[data-i18n="howStep1"]': t.howStep1,
+      '[data-i18n="howStep1Desc"]': t.howStep1Desc,
+      '[data-i18n="howStep2"]': t.howStep2,
+      '[data-i18n="howStep2Desc"]': t.howStep2Desc,
+      '[data-i18n="howStep3"]': t.howStep3,
+      '[data-i18n="howStep3Desc"]': t.howStep3Desc,
+      '[data-i18n="statsTag"]': t.statsTag,
+      '[data-i18n="statsTitle"]': t.statsTitle,
+      '[data-i18n="statsSub"]': t.statsSub,
+      '[data-i18n="statsChart1"]': t.statsChart1,
+      '[data-i18n="statsChart2"]': t.statsChart2,
+      '[data-i18n="statsBar1"]': t.statsBar1,
+      '[data-i18n="statsBar2"]': t.statsBar2,
+      '[data-i18n="statsBar3"]': t.statsBar3,
+      '[data-i18n="statsBar4"]': t.statsBar4,
+      '[data-i18n="statsPool"]': t.statsPool,
+      '[data-i18n="statsLegend1"]': t.statsLegend1,
+      '[data-i18n="statsLegend2"]': t.statsLegend2,
+      '[data-i18n="statsLegend3"]': t.statsLegend3,
+      '[data-i18n="faqTitle"]': t.faqTitle,
+      '[data-i18n="faq1Q"]': t.faq1Q,
+      '[data-i18n="faq1A"]': t.faq1A,
+      '[data-i18n="faq2Q"]': t.faq2Q,
+      '[data-i18n="faq2A"]': t.faq2A,
+      '[data-i18n="faq3Q"]': t.faq3Q,
+      '[data-i18n="faq3A"]': t.faq3A,
+      '[data-i18n="faq4Q"]': t.faq4Q,
+      '[data-i18n="faq4A"]': t.faq4A,
+      '[data-i18n="faq5Q"]': t.faq5Q,
+      '[data-i18n="faq5A"]': t.faq5A,
+      '[data-i18n="faq6Q"]': t.faq6Q,
+      '[data-i18n="faq6A"]': t.faq6A,
+      '[data-i18n="faq7Q"]': t.faq7Q,
+      '[data-i18n="faq7A"]': t.faq7A,
+      '[data-i18n="finalTitle"]': t.finalTitle,
+      '[data-i18n="finalSub"]': t.finalSub,
+      '[data-i18n="finalCta"]': t.finalCta,
+      '[data-i18n="footerCopy"]': t.footerCopy,
+      '[data-i18n="footerTerms"]': t.footerTerms,
+      '[data-i18n="footerPolicy"]': t.footerPolicy,
+      '[data-i18n="footerContact"]': t.footerContact,
+    };
+
+    const htmlKeys = ['heroTitle', 'heroSub', 'prizeTitle', 'howTitle', 'finalTitle', 'finalSub', 'statsLegend1', 'statsLegend2', 'statsLegend3'];
+    for (const sel in map) {
+      const key = sel.match(/data-i18n="([^"]+)"/)?.[1] || '';
+      const useHtml = htmlKeys.includes(key) || map[sel].indexOf('<') >= 0;
+      const els = document.querySelectorAll(sel);
+      els.forEach(function (el) {
+        if (useHtml) {
+          el.innerHTML = map[sel];
+        } else {
+          el.textContent = map[sel];
+        }
+      });
+    }
   }
 
-  function updateSwitcher(lang) {
-    document.querySelectorAll(".lang-switcher [data-lang]").forEach(function (btn) {
-      btn.classList.toggle("active", btn.getAttribute("data-lang") === lang);
-      btn.setAttribute("aria-pressed", btn.getAttribute("data-lang") === lang ? "true" : "false");
-    });
-  }
+  function init() {
+    apply();
 
-  function initSwitcher() {
-    document.querySelectorAll(".lang-switcher [data-lang]").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var lang = btn.getAttribute("data-lang");
+    function updateSwitchers() {
+      const lang = getLang();
+      document.querySelectorAll('.lang-switcher').forEach(function (sw) {
+        sw.querySelectorAll('button[data-lang]').forEach(function (b) {
+          const isActive = b.getAttribute('data-lang') === lang;
+          b.classList.toggle('active', isActive);
+          b.setAttribute('aria-pressed', isActive);
+        });
+      });
+    }
+    updateSwitchers();
+    document.querySelectorAll('.lang-switcher').forEach(function (sw) {
+      sw.addEventListener('click', function (e) {
+        const btn = e.target.closest('button[data-lang]');
+        if (!btn) return;
+        e.preventDefault();
+        const lang = btn.getAttribute('data-lang');
         setLang(lang);
+        apply();
+        updateSwitchers();
       });
     });
   }
 
-  window.i18n = {
-    lang: DEFAULT,
-    setLang: setLang,
-    get: function (path) { return get(window.i18n.lang, path); },
-    supported: SUPPORTED
-  };
-
-  var initial = detectLang();
-  window.i18n.lang = initial;
-  document.documentElement.lang = initial === "ru" ? "ru" : initial === "es" ? "es" : "en";
-
-  function boot() {
-    applyLang(initial);
-    initSwitcher();
-    updateSwitcher(initial);
-  }
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
   } else {
-    boot();
+    init();
   }
+
+  window.auraI18n = { getLang, setLang, apply };
 })();
