@@ -484,6 +484,10 @@ function TradePageContent() {
     });
   }
 
+  const chartAreaPadding = mobileOrderCollapsed
+    ? "pb-[calc(110px+env(safe-area-inset-bottom,0px))] xl:pb-0"
+    : "pb-[calc(200px+env(safe-area-inset-bottom,0px))] xl:pb-0";
+
   return (
     <AuthGuard>
       <WebSocketBridge />
@@ -797,11 +801,7 @@ function TradePageContent() {
                 </div>
               </div>
               {/* Область графика: на мобильных — отступ снизу под панель ордера */}
-              <div className={`mt-1 xl:mt-2 min-h-[200px] sm:min-h-[260px] xl:min-h-[380px] flex-1 w-full min-w-0 overflow-x-auto overflow-y-hidden xl:overflow-hidden flex flex-col relative surface-scroll transition-[padding-bottom] duration-300 ${
-                mobileOrderCollapsed
-                  ? "pb-[calc(110px+env(safe-area-inset-bottom,0px))] xl:pb-0"
-                  : "pb-[calc(200px+env(safe-area-inset-bottom,0px))] xl:pb-0"
-              }`}>
+              <div className={"mt-1 xl:mt-2 min-h-[200px] sm:min-h-[260px] xl:min-h-[380px] flex-1 w-full min-w-0 overflow-x-auto overflow-y-hidden xl:overflow-hidden flex flex-col relative surface-scroll transition-[padding-bottom] duration-300 " + chartAreaPadding}>
               <div className="min-w-[min(100%,800px)] xl:min-w-0 h-full flex flex-col">
               <PriceChart
                 candles={candles}
@@ -843,7 +843,7 @@ function TradePageContent() {
                 <div className="w-10 h-1 rounded-full bg-slate-600" />
               </button>
               {/* Заголовок и баланс: скрыты когда свёрнуто (мобильные) */}
-              <div className={`flex flex-wrap items-center justify-between gap-2 xl:gap-3 pb-1 xl:pb-3 ${mobileOrderCollapsed ? "hidden xl:flex" : ""}`}>
+              <div className={"flex flex-wrap items-center justify-between gap-2 xl:gap-3 pb-1 xl:pb-3 " + (mobileOrderCollapsed ? "hidden xl:flex" : "")}>
                 <div className="min-w-0 flex items-center gap-2 flex-1">
                   <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 xl:text-xs xl:text-slate-400 shrink-0">
                     {t("trade.newOrder")}
