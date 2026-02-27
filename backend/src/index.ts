@@ -43,8 +43,8 @@ function generatePartnerReferralCode(): string {
 
 const PORT = Number(process.env.PORT) || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || "supersecretjwtkey";
-// Локальная разработка и прод: localhost + https://aurabotrade.com (при необходимости добавьте ngrok и др. через FRONTEND_ORIGIN в .env)
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3000,http://localhost:3001,https://aurabotrade.com";
+// Локальная разработка и прод: localhost + https://lk.auraretrade.com (при необходимости добавьте ngrok и др. через FRONTEND_ORIGIN в .env)
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || "http://localhost:3000,http://localhost:3001,https://lk.auraretrade.com";
 // Реферальная программа на отдельном домене (для CORS)
 const REFERRAL_ORIGIN = process.env.REFERRAL_FRONTEND_ORIGIN || "";
 const CORS_ORIGINS = [

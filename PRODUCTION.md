@@ -25,7 +25,7 @@
 | Переменная | Описание | По умолчанию |
 |------------|----------|--------------|
 | **`HIGHHELP_API_BASE`** | Базовый URL API HighHelp | `https://api.hh-processing.com` |
-| **`FRONTEND_ORIGIN`** | CORS и редирект после оплаты. По умолчанию: `http://localhost:3000`, `http://localhost:3001`, `https://aurabotrade.com`. В проде можно задать только прод: `https://aurabotrade.com` (тогда редирект после оплаты пойдёт на него) | — |
+| **`FRONTEND_ORIGIN`** | CORS и редирект после оплаты. По умолчанию: `http://localhost:3000`, `http://localhost:3001`, `https://lk.auraretrade.com`. В проде можно задать только прод: `https://lk.auraretrade.com` (тогда редирект после оплаты пойдёт на него) | — |
 | **`JWT_SECRET`** | Секрет для JWT (в проде задать свой) | — |
 | **`DATABASE_URL`** | Подключение к PostgreSQL | см. `.env.example` |
 

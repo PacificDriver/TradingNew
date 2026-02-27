@@ -86,7 +86,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "support.adminBack": "← Админка",
 
     "depositModal.title": "Пополнение",
-    "depositModal.message": "Пополнение возможно только через поддержку. Напишите в чат поддержки для зачисления средств.",
+    "depositModal.message": "Временно пополнение возможно только через поддержку. Напишите в чат поддержки для зачисления средств.",
     "depositModal.supportBtn": "Открыть чат с поддержкой",
     "depositModal.closeBtn": "Закрыть",
 
