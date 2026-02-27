@@ -343,6 +343,14 @@ async function getReferralWithdrawConfig(): Promise<{ viaManager: boolean; manag
   };
 }
 
+async function getTradingConfig(): Promise<{ winPayoutPercent: number }> {
+  const raw = await getAppSetting("win_payout_percent");
+  const n = Number(raw);
+  return {
+    winPayoutPercent: Number.isFinite(n) && n >= 1 && n <= 200 ? n : 100
+  };
+}
+
 /** Запрещает доступ полностью заблокированным пользователям (кроме /me и поддержки) */
 async function requireNotBlockedMiddleware(
   req: AuthRequest,
@@ -2749,6 +2757,36 @@ app.patch(
   }
 );
 
+// --- Admin: настройки торговли (процент выигрыша) ---
+app.get(
+  "/admin/settings/trading",
+  authMiddleware,
+  adminMiddleware,
+  async (_req: AuthRequest, res) => {
+    const config = await getTradingConfig();
+    return res.json(config);
+  }
+);
+
+app.patch(
+  "/admin/settings/trading",
+  authMiddleware,
+  adminMiddleware,
+  async (req: AuthRequest, res) => {
+    const body = req.body as { winPayoutPercent?: number };
+    if (typeof body.winPayoutPercent === "number") {
+      const val = Math.min(200, Math.max(1, Math.round(body.winPayoutPercent)));
+      await prisma.appSetting.upsert({
+        where: { key: "win_payout_percent" },
+        create: { key: "win_payout_percent", value: String(val) },
+        update: { value: String(val) }
+      });
+    }
+    const config = await getTradingConfig();
+    return res.json(config);
+  }
+);
+
 // --- Admin: список пользователей ---
 app.get(
   "/admin/users",
@@ -3163,7 +3201,13 @@ async function settleExpiredTrades() {
       if (updateResult.count === 0) return false;
 
       if (status === TradeStatus.WIN) {
-        const payout = Number(trade.amount) * 2;
+        const winPayoutPercentRaw = await getAppSetting("win_payout_percent");
+        const winPayoutPercent = Math.min(
+          200,
+          Math.max(1, Number(winPayoutPercentRaw) || 100)
+        );
+        const payout =
+          Number(trade.amount) * (1 + winPayoutPercent / 100);
         const u = await tx.user.findUnique({
           where: { id: trade.userId },
           select: { demoBalance: true }

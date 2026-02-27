@@ -26,11 +26,15 @@ type TradingPairRow = {
   currentPrice: number;
 };
 
-type AdminTab = "users" | "pairs" | "referral";
+type AdminTab = "users" | "pairs" | "referral" | "trading";
 
 type ReferralSettings = {
   viaManager: boolean;
   managerTelegram: string;
+};
+
+type TradingSettings = {
+  winPayoutPercent: number;
 };
 
 export default function AdminPage() {
@@ -68,6 +72,13 @@ export default function AdminPage() {
   });
   const [referralLoading, setReferralLoading] = useState(false);
   const [referralSaving, setReferralSaving] = useState(false);
+
+  // Trading settings (процент выигрыша)
+  const [tradingSettings, setTradingSettings] = useState<TradingSettings>({
+    winPayoutPercent: 100
+  });
+  const [tradingLoading, setTradingLoading] = useState(false);
+  const [tradingSaving, setTradingSaving] = useState(false);
 
   useEffect(() => {
     if (!authChecked) return;
@@ -112,7 +123,33 @@ export default function AdminPage() {
         .catch(() => {})
         .finally(() => setReferralLoading(false));
     }
+    if (activeTab === "trading") {
+      setTradingLoading(true);
+      apiFetch<TradingSettings>("/admin/settings/trading", { headers: authHeaders(token) })
+        .then(setTradingSettings)
+        .catch(() => setTradingSettings({ winPayoutPercent: 100 }))
+        .finally(() => setTradingLoading(false));
+    }
   }, [authChecked, user?.isAdmin, token, activeTab]);
+
+  async function saveTradingSettings() {
+    if (!token) return;
+    setTradingSaving(true);
+    try {
+      const data = await apiFetch<TradingSettings>("/admin/settings/trading", {
+        method: "PATCH",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          winPayoutPercent: tradingSettings.winPayoutPercent
+        })
+      });
+      setTradingSettings(data);
+    } catch {
+      // ignore
+    } finally {
+      setTradingSaving(false);
+    }
+  }
 
   async function saveReferralSettings() {
     if (!token) return;
@@ -317,6 +354,17 @@ export default function AdminPage() {
             }`}
           >
             Реферальная программа
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("trading")}
+            className={`flex-1 rounded-lg py-2.5 px-4 text-sm font-semibold transition-all ${
+              activeTab === "trading"
+                ? "bg-surface text-slate-100 border border-slate-600/60"
+                : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            Торговля
           </button>
         </div>
 
@@ -605,6 +653,79 @@ export default function AdminPage() {
                   className="btn-primary py-2.5 px-5 disabled:opacity-50"
                 >
                   {referralSaving ? "Сохранение…" : "Сохранить"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "trading" && (
+          <div className="card space-y-6">
+            <div className="border-b border-slate-700/60 pb-4">
+              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                Процент выигрыша
+              </h2>
+              <p className="text-sm text-slate-400 mt-1">
+                При ставке 1000 и выигрыше: при 80% на баланс зачислится 1800 (ставка + 80% прибыли).
+                При 100% — 2000 (ставка + 100% прибыли).
+              </p>
+            </div>
+            {tradingLoading ? (
+              <div className="py-8 text-center text-slate-500 text-sm">Загрузка…</div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-2">
+                    Процент выигрыша: {tradingSettings.winPayoutPercent}%
+                  </label>
+                  <div className="flex items-center gap-4">
+                    <input
+                      type="range"
+                      min={1}
+                      max={200}
+                      step={1}
+                      value={tradingSettings.winPayoutPercent}
+                      onChange={(e) =>
+                        setTradingSettings((s) => ({
+                          ...s,
+                          winPayoutPercent: Math.min(200, Math.max(1, Number(e.target.value) || 100))
+                        }))
+                      }
+                      className="flex-1 h-2 rounded-lg appearance-none cursor-pointer accent-accent bg-slate-700"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={tradingSettings.winPayoutPercent}
+                      onChange={(e) =>
+                        setTradingSettings((s) => ({
+                          ...s,
+                          winPayoutPercent: Math.min(
+                            200,
+                            Math.max(1, Math.round(Number(e.target.value) || 100))
+                          )
+                        }))
+                      }
+                      className="w-20 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm font-mono text-slate-200 outline-none focus:border-accent"
+                    />
+                  </div>
+                  <p className="text-slate-500 text-xs mt-2">
+                    Пример: ставка 1000 → при выигрыше:{" "}
+                    {(
+                      1000 *
+                      (1 + tradingSettings.winPayoutPercent / 100)
+                    ).toLocaleString()}{" "}
+                    $
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={saveTradingSettings}
+                  disabled={tradingSaving}
+                  className="btn-primary py-2.5 px-5 disabled:opacity-50"
+                >
+                  {tradingSaving ? "Сохранение…" : "Сохранить"}
                 </button>
               </div>
             )}
