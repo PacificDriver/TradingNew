@@ -488,7 +488,7 @@ function TradePageContent() {
     ? "pb-[calc(110px+env(safe-area-inset-bottom,0px))] xl:pb-0"
     : "pb-[calc(200px+env(safe-area-inset-bottom,0px))] xl:pb-0";
 
-  return (
+  const content = (
     <AuthGuard>
       <WebSocketBridge />
       <SettledResultOverlay />
@@ -1069,6 +1069,7 @@ function TradePageContent() {
       </div>
     </AuthGuard>
   );
+  return content;
 }
 
 function ActiveTrades() {
