@@ -568,9 +568,10 @@
     ScrollTrigger.create({
       trigger: el, start: "top 85%", once: true,
       onEnter: function () {
+        var locale = (window.i18n && window.i18n.lang) ? (window.i18n.lang === "ru" ? "ru-RU" : window.i18n.lang === "es" ? "es" : "en-US") : "ru-RU";
         gsap.to(o, {
           val: target, duration: 1.4, ease: "power2.out",
-          onUpdate: function () { el.textContent = Math.round(o.val).toLocaleString("ru-RU"); }
+          onUpdate: function () { el.textContent = Math.round(o.val).toLocaleString(locale); }
         });
       }
     });
