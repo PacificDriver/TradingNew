@@ -1,23 +1,20 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+/** Основной домен платформы — сюда редиректим реферальные ссылки */
+const MAIN_DOMAIN = "https://lk.auraretrade.com";
+
 /**
- * Реферальная ссылка для трейдеров:
  * tbofin.com/register?ref=X → lk.auraretrade.com/register?ref=X
- * Редирект на сервере (не ждёт загрузки JS)
  */
 export function middleware(request: NextRequest) {
   const { pathname, searchParams } = request.nextUrl;
   if (pathname !== "/register") return NextResponse.next();
 
   const ref = searchParams.get("ref");
-  const mainSite = (
-    process.env.NEXT_PUBLIC_MAIN_SITE_URL || "https://lk.auraretrade.com"
-  ).replace(/\/$/, "");
-
-  if (ref && mainSite) {
+  if (ref) {
     return NextResponse.redirect(
-      new URL(`/register?ref=${encodeURIComponent(ref)}`, mainSite)
+      new URL(`/register?ref=${encodeURIComponent(ref)}`, MAIN_DOMAIN)
     );
   }
 
