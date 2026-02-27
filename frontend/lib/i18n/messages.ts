@@ -13,7 +13,7 @@ export const LOCALE_LABELS: Record<Locale, string> = {
 };
 
 /** Default locale when no preference and no browser match */
-export const DEFAULT_LOCALE: Locale = "ru";
+export const DEFAULT_LOCALE: Locale = "en";
 
 const messages: Record<Locale, Record<string, string>> = {
   ru: {

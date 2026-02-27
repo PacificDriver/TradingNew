@@ -33,7 +33,7 @@ export const viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ru" className={`dark ${unbounded.variable} ${manrope.variable}`}>
+    <html lang="en" className={`dark ${unbounded.variable} ${manrope.variable}`}>
       <body className="min-h-screen bg-background text-slate-100 font-body relative">
         <LocaleProvider>
         <StoreRehydrateTrigger />

@@ -2,13 +2,9 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { Locale } from "./messages";
-import {
-  DEFAULT_LOCALE,
-  SUPPORTED_LOCALES,
-  getMessage
-} from "./messages";
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES, getMessage } from "./messages";
 
-const STORAGE_KEY = "app_locale";
+const STORAGE_KEY = "referral_locale";
 
 function getStoredLocale(): Locale | null {
   if (typeof window === "undefined") return null;
@@ -29,29 +25,18 @@ export function setStoredLocale(locale: Locale): void {
   }
 }
 
-/**
- * Detects preferred locale:
- * 1. Stored user choice (localStorage)
- * 2. Browser language (navigator.language / navigator.languages), first match in SUPPORTED_LOCALES
- * 3. Default (en)
- */
 export function getPreferredLocale(): Locale {
   const stored = getStoredLocale();
   if (stored) return stored;
-
   if (typeof navigator === "undefined") return DEFAULT_LOCALE;
-
   const lang = navigator.language?.split("-")[0]?.toLowerCase();
   if (lang && SUPPORTED_LOCALES.includes(lang as Locale)) return lang as Locale;
-
-  const languages = navigator.languages;
-  if (Array.isArray(languages)) {
-    for (const l of languages) {
+  if (Array.isArray(navigator.languages)) {
+    for (const l of navigator.languages) {
       const code = l?.split("-")[0]?.toLowerCase();
       if (code && SUPPORTED_LOCALES.includes(code as Locale)) return code as Locale;
     }
   }
-
   return DEFAULT_LOCALE;
 }
 
@@ -95,7 +80,7 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
     [locale]
   );
 
-  const value = useMemo<LocaleContextValue>(
+  const value = useMemo(
     () => ({ locale, setLocale, t }),
     [locale, setLocale, t]
   );
@@ -105,8 +90,6 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
 
 export function useLocale(): LocaleContextValue {
   const ctx = useContext(LocaleContext);
-  if (!ctx) {
-    throw new Error("useLocale must be used within LocaleProvider");
-  }
+  if (!ctx) throw new Error("useLocale must be used within LocaleProvider");
   return ctx;
 }

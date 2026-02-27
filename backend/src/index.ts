@@ -466,10 +466,47 @@ const POPULAR_TRADING_PAIRS: { symbol: string; name: string; currentPrice: numbe
   { symbol: "JASMYUSDT", name: "JasmyCoin / Tether", currentPrice: 0.02 },
   { symbol: "NOTUSDT", name: "Notcoin / Tether", currentPrice: 0.012 },
   { symbol: "ZROUSDT", name: "LayerZero / Tether", currentPrice: 2.5 },
-  { symbol: "LISTAUSDT", name: "Lista DAO / Tether", currentPrice: 0.45 }
+  { symbol: "LISTAUSDT", name: "Lista DAO / Tether", currentPrice: 0.45 },
+
+  // --- Forex pairs (реальные курсы с ExchangeRate-API) ---
+  { symbol: "USDRUB", name: "USD / RUB", currentPrice: 95 },
+  { symbol: "EURUSD", name: "EUR / USD", currentPrice: 1.08 },
+  { symbol: "GBPUSD", name: "GBP / USD", currentPrice: 1.27 },
+  { symbol: "USDJPY", name: "USD / JPY", currentPrice: 155 },
+  { symbol: "USDCHF", name: "USD / CHF", currentPrice: 0.88 },
+  { symbol: "USDCAD", name: "USD / CAD", currentPrice: 1.36 },
+  { symbol: "AUDUSD", name: "AUD / USD", currentPrice: 0.65 },
+  { symbol: "NZDUSD", name: "NZD / USD", currentPrice: 0.60 },
+  { symbol: "EURRUB", name: "EUR / RUB", currentPrice: 103 },
+  { symbol: "GBPRUB", name: "GBP / RUB", currentPrice: 121 },
+  { symbol: "EURGBP", name: "EUR / GBP", currentPrice: 0.85 },
+  { symbol: "EURJPY", name: "EUR / JPY", currentPrice: 167 },
+  { symbol: "GBPJPY", name: "GBP / JPY", currentPrice: 197 },
+  { symbol: "EURCHF", name: "EUR / CHF", currentPrice: 0.95 },
+  { symbol: "GBPCHF", name: "GBP / CHF", currentPrice: 1.12 },
+  { symbol: "AUDJPY", name: "AUD / JPY", currentPrice: 101 },
+  { symbol: "USDCNY", name: "USD / CNY", currentPrice: 6.85 },
+  { symbol: "USDINR", name: "USD / INR", currentPrice: 91 },
+  { symbol: "USDPLN", name: "USD / PLN", currentPrice: 3.58 },
+  { symbol: "USDTRY", name: "USD / TRY", currentPrice: 44 },
+  { symbol: "USDNOK", name: "USD / NOK", currentPrice: 9.55 },
+  { symbol: "USDSEK", name: "USD / SEK", currentPrice: 9.05 },
+  { symbol: "USDMXN", name: "USD / MXN", currentPrice: 17.2 },
+  { symbol: "USDBRL", name: "USD / BRL", currentPrice: 5.13 },
+  { symbol: "USDZAR", name: "USD / ZAR", currentPrice: 15.9 },
+  { symbol: "CHFJPY", name: "CHF / JPY", currentPrice: 176 },
+  { symbol: "CHFRUB", name: "CHF / RUB", currentPrice: 108 }
 ];
 
-// --- Real prices from Binance (как на TradingView) ---
+// --- Forex: символы (реальные курсы с open.er-api.com) ---
+const FOREX_SYMBOLS = new Set([
+  "USDRUB", "EURUSD", "GBPUSD", "USDJPY", "USDCHF", "USDCAD", "AUDUSD", "NZDUSD",
+  "EURRUB", "GBPRUB", "EURGBP", "EURJPY", "GBPJPY", "EURCHF", "GBPCHF", "AUDJPY",
+  "USDCNY", "USDINR", "USDPLN", "USDTRY", "USDNOK", "USDSEK", "USDMXN", "USDBRL",
+  "USDZAR", "CHFJPY", "CHFRUB"
+]);
+
+// --- Real prices from Binance (крипто) ---
 const BINANCE_TICKER_URL = "https://api.binance.com/api/v3/ticker/price";
 const BINANCE_FETCH_TIMEOUT_MS = 12_000;
 const BINANCE_RETRIES = 3;
@@ -506,6 +543,80 @@ async function fetchBinancePrices(): Promise<Map<string, number>> {
     lastBinanceErrorLog = now;
     // eslint-disable-next-line no-console
     console.error("Binance fetch failed after retries (prices from DB/cache):", lastErr);
+  }
+  return map;
+}
+
+const FOREX_API_URL = "https://open.er-api.com/v6/latest/USD";
+const FOREX_FETCH_TIMEOUT_MS = 5000;
+const FOREX_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min — API обновляет раз в сутки, часто не запрашивать
+const FOREX_ERROR_LOG_INTERVAL_MS = 5 * 60 * 1000;
+let lastForexErrorLog = 0;
+let forexCache: Map<string, number> = new Map();
+let forexCacheTime = 0;
+
+async function fetchForexPrices(): Promise<Map<string, number>> {
+  const now = Date.now();
+  if (forexCache.size > 0 && now - forexCacheTime < FOREX_CACHE_TTL_MS) {
+    return forexCache;
+  }
+  const map = new Map<string, number>();
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FOREX_FETCH_TIMEOUT_MS);
+    const res = await fetch(FOREX_API_URL, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) return map;
+    const data = (await res.json()) as {
+      result?: string;
+      base_code?: string;
+      rates?: Record<string, number>;
+    };
+    const rates = data?.rates ?? {};
+    if (Object.keys(rates).length === 0) return map;
+    const r = (code: string) => (rates[code] != null && Number.isFinite(rates[code]) && rates[code]! > 0 ? rates[code]! : 0);
+    const pairs: Array<[string, number]> = [
+      ["USDRUB", r("RUB")],
+      ["USDJPY", r("JPY")],
+      ["USDCHF", r("CHF")],
+      ["USDCAD", r("CAD")],
+      ["USDCNY", r("CNY")],
+      ["USDINR", r("INR")],
+      ["USDPLN", r("PLN")],
+      ["USDTRY", r("TRY")],
+      ["USDNOK", r("NOK")],
+      ["USDSEK", r("SEK")],
+      ["USDMXN", r("MXN")],
+      ["USDBRL", r("BRL")],
+      ["USDZAR", r("ZAR")],
+      ["EURUSD", r("EUR") > 0 ? 1 / r("EUR") : 0],
+      ["GBPUSD", r("GBP") > 0 ? 1 / r("GBP") : 0],
+      ["AUDUSD", r("AUD") > 0 ? 1 / r("AUD") : 0],
+      ["NZDUSD", r("NZD") > 0 ? 1 / r("NZD") : 0],
+      ["EURRUB", r("EUR") > 0 ? r("RUB") / r("EUR") : 0],
+      ["GBPRUB", r("GBP") > 0 ? r("RUB") / r("GBP") : 0],
+      ["CHFRUB", r("CHF") > 0 ? r("RUB") / r("CHF") : 0],
+      ["EURGBP", r("EUR") > 0 && r("GBP") > 0 ? r("GBP") / r("EUR") : 0],
+      ["EURJPY", r("EUR") > 0 ? r("JPY") / r("EUR") : 0],
+      ["GBPJPY", r("GBP") > 0 ? r("JPY") / r("GBP") : 0],
+      ["EURCHF", r("EUR") > 0 ? r("CHF") / r("EUR") : 0],
+      ["GBPCHF", r("GBP") > 0 ? r("CHF") / r("GBP") : 0],
+      ["AUDJPY", r("AUD") > 0 ? r("JPY") / r("AUD") : 0],
+      ["CHFJPY", r("CHF") > 0 ? r("JPY") / r("CHF") : 0]
+    ];
+    for (const [symbol, price] of pairs) {
+      if (price > 0 && Number.isFinite(price)) map.set(symbol, price);
+    }
+    forexCache = new Map(map);
+    forexCacheTime = Date.now();
+  } catch (err) {
+    const now = Date.now();
+    if (now - lastForexErrorLog >= FOREX_ERROR_LOG_INTERVAL_MS) {
+      lastForexErrorLog = now;
+      // eslint-disable-next-line no-console
+      console.error("Forex fetch failed (open.er-api.com):", err);
+    }
+    if (forexCache.size > 0) return forexCache;
   }
   return map;
 }
@@ -698,7 +809,6 @@ class PriceService {
       select: { id: true, symbol: true, currentPrice: true }
     });
 
-    // Удаляем пары, которых нет в списке Binance (форекс, старые и т.д.)
     const toRemove = existing.filter((p) => !allowedSymbols.has(p.symbol));
     for (const pair of toRemove) {
       await prisma.trade.deleteMany({ where: { tradingPairId: pair.id } });
@@ -706,7 +816,7 @@ class PriceService {
     }
     if (toRemove.length > 0) {
       // eslint-disable-next-line no-console
-      console.log(`Removed ${toRemove.length} old/forex pairs (kept only Binance list).`);
+      console.log(`Removed ${toRemove.length} pairs not in allowed list.`);
     }
 
     const existingAfter = await prisma.tradingPair.findMany({
@@ -723,15 +833,18 @@ class PriceService {
     const allPairs = await prisma.tradingPair.findMany({
       orderBy: { id: "asc" }
     });
-    const binancePrices = await fetchBinancePrices();
+    const [binancePrices, forexPrices] = await Promise.all([
+      fetchBinancePrices(),
+      fetchForexPrices()
+    ]);
     for (const p of allPairs) {
-      const realPrice = binancePrices.get(p.symbol);
+      const realPrice = binancePrices.get(p.symbol) ?? (FOREX_SYMBOLS.has(p.symbol) ? forexPrices.get(p.symbol) : undefined);
       const price =
-        realPrice != null && Number.isFinite(realPrice)
+        realPrice != null && Number.isFinite(realPrice) && realPrice > 0
           ? realPrice
           : Number(p.currentPrice);
       this.prices.set(p.id, price);
-      if (realPrice != null) {
+      if (realPrice != null && realPrice > 0) {
         await prisma.tradingPair.update({
           where: { id: p.id },
           data: { currentPrice: price }
@@ -757,10 +870,15 @@ class PriceService {
 
   private async runPriceFeedRound(candleService: CandleService) {
     const pairs = await prisma.tradingPair.findMany();
-    const binancePrices = await fetchBinancePrices();
+    const [binancePrices, forexPrices] = await Promise.all([
+      fetchBinancePrices(),
+      fetchForexPrices()
+    ]);
     const ts = new Date();
     for (const pair of pairs) {
-      const realPrice = binancePrices.get(pair.symbol);
+      const realPrice =
+        binancePrices.get(pair.symbol) ??
+        (FOREX_SYMBOLS.has(pair.symbol) ? forexPrices.get(pair.symbol) : undefined);
       let next: number;
       if (realPrice != null && Number.isFinite(realPrice) && realPrice > 0) {
         next = realPrice;
@@ -2760,6 +2878,8 @@ app.get(
         id: true,
         email: true,
         isAdmin: true,
+        demoBalance: true,
+        referralBalance: true,
         createdAt: true,
         blockedAt: true,
         withdrawBlockedAt: true,
@@ -2769,9 +2889,76 @@ app.get(
     return res.json({
       users: users.map((u) => ({
         ...u,
+        demoBalance: Number(u.demoBalance),
+        referralBalance: Number(u.referralBalance),
         blockedAt: u.blockedAt?.toISOString() ?? null,
         withdrawBlockedAt: u.withdrawBlockedAt?.toISOString() ?? null
       }))
+    });
+  }
+);
+
+// --- Admin: корректировка баланса пользователя ---
+app.patch(
+  "/admin/users/:id/balance",
+  authMiddleware,
+  adminMiddleware,
+  async (req: AuthRequest, res) => {
+    const targetId = Number(req.params.id);
+    if (!Number.isFinite(targetId)) {
+      return res.status(400).json({ message: "Invalid user id" });
+    }
+    const body = req.body as { amount: number; balance?: "demo" | "referral" };
+    const amount = Number(body?.amount);
+    if (!Number.isFinite(amount) || amount === 0) {
+      return res.status(400).json({ message: "Amount required (positive = add, negative = subtract)" });
+    }
+    const balanceType = body?.balance === "referral" ? "referral" : "demo";
+    const target = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: { id: true, isAdmin: true, demoBalance: true, referralBalance: true }
+    });
+    if (!target) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    if (target.isAdmin) {
+      return res.status(403).json({ message: "Cannot adjust admin balance" });
+    }
+    const field = balanceType === "referral" ? "referralBalance" : "demoBalance";
+    const current = Number(balanceType === "referral" ? target.referralBalance : target.demoBalance);
+    const newBalance = current + amount;
+    if (newBalance < 0) {
+      return res.status(400).json({ message: "Insufficient balance to subtract" });
+    }
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = await tx.user.update({
+        where: { id: targetId },
+        data: field === "referralBalance" ? { referralBalance: newBalance } : { demoBalance: newBalance },
+        select: { demoBalance: true, referralBalance: true }
+      });
+      await createBalanceAudit(tx, {
+        userId: targetId,
+        type: "admin_adjust",
+        amount,
+        balanceBefore: current,
+        balanceAfter: newBalance,
+        refType: "admin",
+        refId: `${balanceType}:${req.userId}`
+      });
+      return u;
+    });
+    notifyBalanceChange(prisma, {
+      userId: targetId,
+      type: "admin_adjust",
+      amount,
+      balanceBefore: current,
+      balanceAfter: newBalance,
+      refType: "admin",
+      refId: `${balanceType}:${req.userId}`
+    }).catch(() => {});
+    return res.json({
+      demoBalance: Number(updated.demoBalance),
+      referralBalance: Number(updated.referralBalance)
     });
   }
 );

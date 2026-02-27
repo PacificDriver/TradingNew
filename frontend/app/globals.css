@@ -147,6 +147,15 @@ body {
   color: #f0b90b;
 }
 
+/* iOS: предотвратить авто-зум при фокусе на input (нужен font-size >= 16px) */
+@media screen and (max-width: 1023px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* Мобильные: удобные зоны нажатия и отключение задержки тапа */
 @media (max-width: 1023px) {
   .chip {
