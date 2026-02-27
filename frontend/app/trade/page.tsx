@@ -1,6 +1,7 @@
 "use client";
 
-import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGuard } from "../../components/AuthGuard";
 import { WebSocketBridge } from "../../components/WebSocketBridge";
@@ -487,7 +488,7 @@ function TradePageContent() {
     ? "pb-[calc(110px+env(safe-area-inset-bottom,0px))] xl:pb-0"
     : "pb-[calc(200px+env(safe-area-inset-bottom,0px))] xl:pb-0";
 
-  const content = React.createElement(AuthGuard, null,
+  const content = (
     <>
       <WebSocketBridge />
       <SettledResultOverlay />
@@ -1068,7 +1069,8 @@ function TradePageContent() {
       </div>
     </>
   );
-  return content;
+  const Guard = AuthGuard;
+  return <Guard>{content}</Guard>;
 }
 
 function ActiveTrades() {
