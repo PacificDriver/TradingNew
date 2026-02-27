@@ -9,6 +9,7 @@ import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import UAParser from "ua-parser-js";
 import { WebSocketServer } from "ws";
+import WebSocket from "ws";
 import type { Server } from "http";
 import {
   createPayin,
@@ -479,10 +480,11 @@ const POPULAR_TRADING_PAIRS: { symbol: string; name: string; currentPrice: numbe
 
 // --- Real prices from Binance (как на TradingView) ---
 const BINANCE_TICKER_URL = "https://api.binance.com/api/v3/ticker/price";
+const BINANCE_WS_URL = "wss://stream.binance.com:9443/ws/!ticker@arr";
 const BINANCE_FETCH_TIMEOUT_MS = 12_000;
 const BINANCE_RETRIES = 3;
 const BINANCE_RETRY_DELAY_MS = 1000;
-/** Логируем ошибку Binance не чаще раза в 5 минут, чтобы не засорять консоль в Docker при сетевых сбоях */
+/** Логируем ошибку Binance не чаще раза в 5 минут */
 let lastBinanceErrorLog = 0;
 const BINANCE_ERROR_LOG_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -697,6 +699,10 @@ class CandleService {
 class PriceService {
   private prices = new Map<number, number>();
   private subscribers: PriceSubscribers = new Set();
+  /** symbol (BTCUSDT) → pairId */
+  private symbolToPairId = new Map<string, number>();
+  private binanceWs: InstanceType<typeof WebSocket> | null = null;
+  private binanceWsReconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   async init() {
     const allowedSymbols = new Set(
@@ -731,6 +737,7 @@ class PriceService {
     const allPairs = await prisma.tradingPair.findMany({
       orderBy: { id: "asc" }
     });
+    for (const p of allPairs) this.symbolToPairId.set(p.symbol, p.id);
     const binancePrices = await fetchBinancePrices();
     for (const p of allPairs) {
       const realPrice = binancePrices.get(p.symbol);
@@ -763,8 +770,70 @@ class PriceService {
     return this.prices.get(pairId);
   }
 
+  /** Применить тикер из Binance WebSocket (realtime) */
+  applyBinanceTicker(
+    symbol: string,
+    price: number,
+    candleService: CandleService,
+    ts: Date
+  ) {
+    const pairId = this.symbolToPairId.get(symbol);
+    if (pairId == null || !Number.isFinite(price) || price <= 0) return;
+    this.prices.set(pairId, price);
+    candleService.update(pairId, price, ts);
+    this.notify(pairId, price);
+  }
+
+  /** Binance WebSocket — real-time tickers (как TradingView) */
+  private startBinanceWebSocket(candleService: CandleService) {
+    const connect = () => {
+      try {
+        const ws = new WebSocket(BINANCE_WS_URL);
+        this.binanceWs = ws;
+        ws.on("open", () => {
+          // eslint-disable-next-line no-console
+          console.log("[Binance WS] Connected — real-time prices");
+        });
+        ws.on("message", (data: Buffer) => {
+          try {
+            const arr = JSON.parse(data.toString()) as Array<{ s?: string; c?: string }>;
+            if (!Array.isArray(arr)) return;
+            const ts = new Date();
+            for (const t of arr) {
+              const symbol = t.s;
+              const price = parseFloat(t.c ?? "0");
+              if (symbol && Number.isFinite(price)) {
+                this.applyBinanceTicker(symbol, price, candleService, ts);
+              }
+            }
+          } catch {
+            // ignore parse errors
+          }
+        });
+        ws.on("close", () => {
+          this.binanceWs = null;
+          // reconnect after 5s
+          this.binanceWsReconnectTimer = setTimeout(connect, 5000);
+        });
+        ws.on("error", () => {
+          ws.terminate();
+        });
+      } catch (err) {
+        const now = Date.now();
+        if (now - lastBinanceErrorLog >= BINANCE_ERROR_LOG_INTERVAL_MS) {
+          lastBinanceErrorLog = now;
+          // eslint-disable-next-line no-console
+          console.error("[Binance WS] Connect error:", err);
+        }
+        this.binanceWsReconnectTimer = setTimeout(connect, 5000);
+      }
+    };
+    connect();
+  }
+
   private async runPriceFeedRound(candleService: CandleService) {
     const pairs = await prisma.tradingPair.findMany();
+    for (const p of pairs) this.symbolToPairId.set(p.symbol, p.id);
     const binancePrices = await fetchBinancePrices();
     const ts = new Date();
     for (const pair of pairs) {
@@ -787,17 +856,18 @@ class PriceService {
   }
 
   startRealPriceFeed(candleService: CandleService) {
-    const PRICE_POLL_MS = 2000;
     this.runPriceFeedRound(candleService).catch((err) =>
       // eslint-disable-next-line no-console
       console.error("Error in initial price feed", err)
     );
+    this.startBinanceWebSocket(candleService);
+    const REST_FALLBACK_MS = 60_000;
     setInterval(() => {
       this.runPriceFeedRound(candleService).catch((err) =>
         // eslint-disable-next-line no-console
-        console.error("Error in price feed", err)
+        console.error("Error in price feed fallback", err)
       );
-    }, PRICE_POLL_MS);
+    }, REST_FALLBACK_MS);
   }
 }
 

@@ -1,12 +1,14 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useReferralAuth } from "../ReferralAuthContext";
 import { referralApiFetch, setReferralToken } from "../../lib/referralApi";
 
 const inputClass = "mt-1.5 input-glass";
+
+const MAIN_SITE_URL = (process.env.NEXT_PUBLIC_MAIN_SITE_URL || "").replace(/\/$/, "");
 
 type RegisterResponse = {
   token?: string;
@@ -15,6 +17,16 @@ type RegisterResponse = {
 
 export default function ReferralRegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const ref = searchParams.get("ref");
+
+  // Реферальная ссылка для трейдеров: tbofin.com/register?ref=X → lk.auraretrade.com/register?ref=X
+  useEffect(() => {
+    if (ref && MAIN_SITE_URL) {
+      window.location.href = `${MAIN_SITE_URL}/register?ref=${encodeURIComponent(ref)}`;
+    }
+  }, [ref]);
+
   const { setPartner } = useReferralAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -43,6 +55,14 @@ export default function ReferralRegisterPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (ref && MAIN_SITE_URL) {
+    return (
+      <div className="flex min-h-[70vh] items-center justify-center">
+        <div className="h-8 w-8 rounded-full border-2 border-accent/40 border-t-accent animate-spin" />
+      </div>
+    );
   }
 
   return (
