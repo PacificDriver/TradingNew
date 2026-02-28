@@ -293,6 +293,7 @@ export function PairSelectDropdown({
             )}
           </div>
         </div>
+      </div>
       )}
     </div>
   );
