@@ -862,16 +862,9 @@ function TradePageContent() {
               <div className="grid grid-cols-1 gap-3">
                 {/* Строка: сумма + время — в одну линию на всех экранах */}
                 {!mobileOrderCollapsed && (
-                <div className="flex flex-row items-center gap-1.5 sm:gap-3 flex-nowrap">
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className="text-slate-500 text-xs sm:text-sm">$</span>
-                    <button
-                      type="button"
-                      onClick={() => setAmount((a) => Math.max(1, a - 15))}
-                      className="chip min-h-[36px] min-w-[36px] sm:min-h-[40px] sm:min-w-[40px] flex items-center justify-center text-sm font-medium touch-manipulation"
-                    >
-                      −15
-                    </button>
+                <div className="flex flex-row gap-2 sm:gap-3 w-full">
+                  <div className="flex flex-1 w-1/2 min-w-0 items-center gap-1.5">
+                    <span className="text-slate-500 text-xs sm:text-sm shrink-0">$</span>
                     <input
                       type="number"
                       inputMode="decimal"
@@ -881,17 +874,10 @@ function TradePageContent() {
                       onChange={(e) =>
                         setAmount(Math.max(1, Number(e.target.value) || 1))
                       }
-                      className="w-14 sm:w-16 input-glass py-2 sm:py-2.5 text-sm sm:text-base font-mono min-h-[36px] sm:min-h-[40px] text-center shrink-0"
+                      className="flex-1 min-w-0 input-glass py-2 sm:py-2.5 text-sm sm:text-base font-mono min-h-[36px] sm:min-h-[40px] text-center"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setAmount((a) => a + 15)}
-                      className="chip min-h-[36px] min-w-[36px] sm:min-h-[40px] sm:min-w-[40px] flex items-center justify-center text-sm font-medium touch-manipulation"
-                    >
-                      +15
-                    </button>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex flex-1 w-1/2 min-w-0 items-center gap-1.5">
                     <input
                       type="number"
                       inputMode="numeric"
@@ -901,7 +887,7 @@ function TradePageContent() {
                       onChange={(e) =>
                         setDuration(Math.max(60, Number(e.target.value) || 60))
                       }
-                      className="w-14 sm:w-16 input-glass py-2 sm:py-2.5 text-sm sm:text-base font-mono min-h-[36px] sm:min-h-[40px] text-center shrink-0"
+                      className="flex-1 min-w-0 input-glass py-2 sm:py-2.5 text-sm sm:text-base font-mono min-h-[36px] sm:min-h-[40px] text-center"
                     />
                     <span className="text-slate-500 text-xs sm:text-sm shrink-0">{t("trade.sec")}</span>
                   </div>
