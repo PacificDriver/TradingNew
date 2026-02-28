@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useLocale } from "../lib/i18n";
 
 const CONTACT_DELAY_MS = 3000;
@@ -47,22 +48,25 @@ export function InvestButton() {
         {t("header.investInAuraTrade")}
       </button>
 
-      {modalOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm animate-fade-in"
-            aria-hidden
-            onClick={() => setModalOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal
-            aria-labelledby="invest-modal-title"
-            className="fixed left-1/2 top-1/2 z-[9999] w-[90vw] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl glass-strong border border-slate-600/60 p-6 shadow-2xl animate-fade-in-up"
-          >
-            <h2 id="invest-modal-title" className="text-lg font-semibold text-slate-100 mb-4">
-              AuraTrade Investment
-            </h2>
+      {modalOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-sm animate-fade-in"
+              aria-hidden
+              onClick={() => setModalOpen(false)}
+            />
+            <div
+              role="dialog"
+              aria-modal
+              aria-labelledby="invest-modal-title"
+              className="fixed left-1/2 top-1/2 z-[9999] w-[90vw] max-w-md rounded-2xl glass-strong border border-slate-600/60 p-6 shadow-2xl animate-fade-in-up"
+              style={{ transform: "translate(-50%, -50%)" }}
+            >
+              <h2 id="invest-modal-title" className="text-lg font-semibold text-slate-100 mb-4">
+                {t("header.investModalTitle")}
+              </h2>
             <p className="text-slate-300 text-sm leading-relaxed mb-6">
               {t("header.investModalText")}
             </p>
@@ -88,8 +92,9 @@ export function InvestButton() {
               </button>
             </div>
           </div>
-        </>
-      )}
+          </>,
+          document.body
+        )}
     </>
   );
 }
