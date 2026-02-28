@@ -58,15 +58,24 @@ export default function InvestPage() {
               <p>{t("invest.card2p3")}</p>
             </div>
           </div>
+        </div>
 
-          {/* Калькулятор */}
-          <div className="sm:col-span-2 glass-panel p-5 sm:p-6 rounded-2xl mt-4 sm:mt-6">
-            <h2 className="text-sm font-semibold text-accent uppercase tracking-wider mb-4">
+        {/* Правая колонка — кнопка Инвестировать + калькулятор */}
+        <div className="xl:sticky xl:top-24 flex flex-col items-center xl:items-stretch gap-5">
+          <a
+            href={`mailto:${EMAIL}?subject=${encodeURIComponent(t("invest.mailtoSubject"))}`}
+            className="btn-invest-gold w-full xl:w-auto rounded-xl px-6 py-4 text-base font-semibold text-slate-950 shadow-lg transition-all hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] text-center inline-flex items-center justify-center"
+          >
+            {t("invest.cta")}
+          </a>
+
+          <div className="w-full xl:w-auto glass-panel p-4 rounded-xl">
+            <h3 className="text-[11px] font-semibold text-accent uppercase tracking-wider mb-3">
               {t("invest.calculatorTitle")}
-            </h2>
-            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 items-start">
-              <div className="w-full sm:w-48">
-                <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">
+            </h3>
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-slate-500 mb-1">
                   {t("invest.calculatorAmount")}
                 </label>
                 <input
@@ -75,33 +84,24 @@ export default function InvestPage() {
                   step={100}
                   value={amount}
                   onChange={(e) => setAmount(Math.max(0, Number(e.target.value) || 0))}
-                  className="w-full input-glass rounded-xl py-2.5 px-4 text-sm font-mono"
+                  className="w-full input-glass rounded-lg py-2 px-3 text-sm font-mono"
                 />
               </div>
-              <div className="flex flex-col gap-2">
-                <p className="text-sm text-slate-300">
+              <div className="space-y-1 text-xs text-slate-300">
+                <p>
                   {t("invest.perQuarter")}: <span className="font-semibold text-accent font-mono">${calculated.perQuarter.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </p>
-                <p className="text-sm text-slate-300">
+                <p>
                   {t("invest.totalReturn")}: <span className="font-semibold text-emerald-400 font-mono">${calculated.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                  <span className="text-slate-500 ml-1">({calculated.totalPercent.toFixed(0)}% {t("invest.totalPercent")})</span>
+                  <span className="text-slate-500">({calculated.totalPercent.toFixed(0)}% {t("invest.totalPercent")})</span>
                 </p>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Правая колонка — кнопка Инвестировать */}
-        <div className="xl:sticky xl:top-24 flex flex-col items-center xl:items-stretch">
-          <a
-            href={`mailto:${EMAIL}?subject=${encodeURIComponent(t("invest.mailtoSubject"))}`}
-            className="btn-invest-gold w-full xl:w-auto rounded-xl px-6 py-4 text-base font-semibold text-slate-950 shadow-lg transition-all hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] text-center inline-flex items-center justify-center"
-          >
-            {t("invest.cta")}
-          </a>
           <Link
             href="/trade"
-            className="mt-4 text-sm text-slate-500 hover:text-slate-300 transition-colors"
+            className="text-sm text-slate-500 hover:text-slate-300 transition-colors"
           >
             ← {t("header.trading")}
           </Link>
