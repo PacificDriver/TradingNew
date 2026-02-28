@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { AuthGuard } from "../../components/AuthGuard";
+import { setSupportLastSeen } from "../../hooks/useSupportUnread";
 import { useTradingStore } from "../../store/useTradingStore";
 import { apiFetch, authHeaders, isAuthError, getDisplayMessage } from "../../lib/api";
 import { useLocale } from "../../lib/i18n";
@@ -44,8 +45,11 @@ export default function SupportPage() {
       const data = await apiFetch<{ thread: { id: number }; messages: Message[] }>("/support/thread", {
         headers: authHeaders(token)
       });
-      setMessages(data.messages ?? []);
+      const msgs = data.messages ?? [];
+      setMessages(msgs);
       setError(null);
+      const last = msgs[msgs.length - 1];
+      if (last) setSupportLastSeen(last.createdAt);
     } catch (err) {
       if (isAuthError(err)) {
         clearAuth();

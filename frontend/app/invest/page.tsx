@@ -1,12 +1,28 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useLocale } from "../../lib/i18n";
 
 const EMAIL = "edjost127@gmail.com";
+const QUARTERLY_PERCENT = 0.3;
+const QUARTERS_COUNT = 8;
 
 export default function InvestPage() {
   const { t } = useLocale();
+  const [amount, setAmount] = useState(10000);
+
+  const calculated = useMemo(() => {
+    const num = Number(amount) || 0;
+    const perQuarter = num * QUARTERLY_PERCENT;
+    const total = perQuarter * QUARTERS_COUNT;
+    const totalPercent = QUARTERLY_PERCENT * QUARTERS_COUNT * 100;
+    return {
+      perQuarter,
+      total,
+      totalPercent
+    };
+  }, [amount]);
 
   return (
     <div className="animate-fade-in-up opacity-0">
@@ -40,6 +56,37 @@ export default function InvestPage() {
               <p>{t("invest.card2p1")}</p>
               <p>{t("invest.card2p2")}</p>
               <p>{t("invest.card2p3")}</p>
+            </div>
+          </div>
+
+          {/* Калькулятор */}
+          <div className="sm:col-span-2 glass-panel p-5 sm:p-6 rounded-2xl mt-4 sm:mt-6">
+            <h2 className="text-sm font-semibold text-accent uppercase tracking-wider mb-4">
+              {t("invest.calculatorTitle")}
+            </h2>
+            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 items-start">
+              <div className="w-full sm:w-48">
+                <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">
+                  {t("invest.calculatorAmount")}
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  step={100}
+                  value={amount}
+                  onChange={(e) => setAmount(Math.max(0, Number(e.target.value) || 0))}
+                  className="w-full input-glass rounded-xl py-2.5 px-4 text-sm font-mono"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <p className="text-sm text-slate-300">
+                  {t("invest.perQuarter")}: <span className="font-semibold text-accent font-mono">${calculated.perQuarter.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </p>
+                <p className="text-sm text-slate-300">
+                  {t("invest.totalReturn")}: <span className="font-semibold text-emerald-400 font-mono">${calculated.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="text-slate-500 ml-1">({calculated.totalPercent.toFixed(0)}% {t("invest.totalPercent")})</span>
+                </p>
+              </div>
             </div>
           </div>
         </div>

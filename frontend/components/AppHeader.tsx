@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { useTradingStore, type TradingPair } from "../store/useTradingStore";
 import { apiFetch, authHeaders } from "../lib/api";
 import { useLocale } from "../lib/i18n";
+import { useSupportUnread } from "../hooks/useSupportUnread";
 import { ChartLogo } from "./ChartLogo";
 import { InvestButton } from "./InvestButton";
 import { LanguageSwitcher } from "./LanguageSwitcher";
@@ -32,6 +33,7 @@ export function AppHeader() {
   const clearAuth = useTradingStore((s) => s.clearAuth);
   const [menuOpen, setMenuOpen] = useState(false);
   const isLoggedIn = Boolean(user ?? token);
+  const supportUnread = useSupportUnread();
 
   const pairs = useTradingStore((s) => s.pairs);
   const setPairs = useTradingStore((s) => s.setPairs);
@@ -153,13 +155,16 @@ export function AppHeader() {
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            className={`flex h-11 w-11 xl:h-9 xl:w-9 items-center justify-center rounded-full text-sm font-semibold text-slate-950 transition-all touch-manipulation min-h-[44px] min-w-[44px] ${
+            className={`relative flex h-11 w-11 xl:h-9 xl:w-9 items-center justify-center rounded-full text-sm font-semibold text-slate-950 transition-all touch-manipulation min-h-[44px] min-w-[44px] ${
               menuOpen
                 ? "bg-accent/90 ring-2 ring-slate-500/50"
                 : "bg-slate-600 hover:bg-slate-500 text-slate-100"
             }`}
           >
             {(user?.email ?? "G").slice(0, 2).toUpperCase()}
+            {supportUnread && (
+              <span className="absolute -top-0.5 -right-0.5 h-3 w-3 rounded-full bg-red-500 ring-2 ring-background" aria-hidden />
+            )}
           </button>
 
           {menuOpen && (
@@ -207,12 +212,18 @@ export function AppHeader() {
                         className="flex items-center gap-3 px-4 py-3 xl:py-2.5 text-sm text-slate-200 transition-colors hover:bg-slate-800/60 min-h-[48px] xl:min-h-0 touch-manipulation"
                         onClick={() => setMenuOpen(false)}
                       >
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-800/80 text-slate-400">
+                        <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-800/80 text-slate-400">
                           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                           </svg>
+                          {supportUnread && (
+                            <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-slate-900" aria-hidden />
+                          )}
                         </span>
                         <span>{t("header.support")}</span>
+                        {supportUnread && (
+                          <span className="ml-auto h-2 w-2 rounded-full bg-red-500 shrink-0" aria-hidden />
+                        )}
                       </Link>
                       {user?.isAdmin && (
                         <Link
