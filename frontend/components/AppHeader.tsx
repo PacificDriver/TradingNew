@@ -2,13 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useEffect, useMemo } from "react";
-import { useTradingStore } from "../store/useTradingStore";
-import type { TradingPair } from "../store/useTradingStore";
+import { useState, useEffect } from "react";
+import { useTradingStore, type TradingPair } from "../store/useTradingStore";
 import { apiFetch, authHeaders } from "../lib/api";
 import { useLocale } from "../lib/i18n";
 import { ChartLogo } from "./ChartLogo";
-import { PairSelectDropdown } from "./PairSelectDropdown";
+import { InvestButton } from "./InvestButton";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useDepositModal } from "./DepositModal";
 
@@ -36,17 +35,6 @@ export function AppHeader() {
 
   const pairs = useTradingStore((s) => s.pairs);
   const setPairs = useTradingStore((s) => s.setPairs);
-  const chartSettings = useTradingStore((s) => s.chartSettings);
-  const setChartSettings = useTradingStore((s) => s.setChartSettings);
-  const favoritePairIds = useTradingStore((s) => s.favoritePairIds);
-  const recentPairIds = useTradingStore((s) => s.recentPairIds);
-  const toggleFavoritePair = useTradingStore((s) => s.toggleFavoritePair);
-  const addRecentPair = useTradingStore((s) => s.addRecentPair);
-
-  const selectedPair = useMemo(
-    () => pairs.find((p) => p.id === chartSettings.selectedPairId) ?? pairs[0] ?? null,
-    [pairs, chartSettings.selectedPairId]
-  );
 
   useEffect(() => {
     if (pairs.length > 0 || !token) return;
@@ -109,35 +97,10 @@ export function AppHeader() {
         </nav>
       </div>
 
-      {/* По центру: выпадающий список пар. Скрыт до авторизации и на мобильных */}
-      {isLoggedIn && (
-      <div className="hidden md:flex flex-1 justify-center min-w-0 max-w-[50%] sm:max-w-none">
-        {pairs.length > 0 ? (
-          <PairSelectDropdown
-              pairs={pairs}
-              selectedPair={selectedPair}
-              onSelectPair={(pair) => {
-                setChartSettings({ selectedPairId: pair.id });
-                addRecentPair(pair.id);
-                const url = `/trade?pairId=${pair.id}`;
-                if (pathname === "/trade") {
-                  router.replace(url, { scroll: false });
-                } else {
-                  router.push(url);
-                }
-              }}
-              favoritePairIds={favoritePairIds}
-              recentPairIds={recentPairIds}
-              toggleFavoritePair={toggleFavoritePair}
-              addRecentPair={addRecentPair}
-            />
-          ) : (
-            <div className="flex items-center rounded-xl glass px-4 py-2.5 text-sm text-slate-500">
-              {t("header.loadingPairs")}
-            </div>
-          )}
+      {/* Кнопка Инвестировать — только на ПК */}
+      <div className="hidden xl:flex flex-1 justify-center min-w-0">
+        <InvestButton />
       </div>
-      )}
 
       {/* Справа: язык + баланс + пополнение + аватар. ml-auto чтобы всегда справа, flex-nowrap чтобы не переносились */}
       <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 shrink-0 flex-nowrap ml-auto">

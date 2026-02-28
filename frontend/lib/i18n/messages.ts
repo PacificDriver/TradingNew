@@ -37,6 +37,13 @@ const messages: Record<Locale, Record<string, string>> = {
     "header.notAuthorized": "Не авторизован",
     "header.openMenu": "Открыть меню",
     "header.language": "Язык",
+    "header.investInAuraTrade": "Инвестировать в AuraTrade",
+    "header.investModalText": "Получать 30% от суммы вклада каждый квартал на протяжении двух лет",
+    "header.contact": "Связаться",
+    "header.contactIn": "Подождите {sec} сек…",
+    "header.contactSent": "Открыто",
+
+    "common.close": "Закрыть",
 
     "mobileNav.trade": "Торговля",
     "mobileNav.pairs": "Пары",
@@ -329,6 +336,13 @@ const messages: Record<Locale, Record<string, string>> = {
     "header.notAuthorized": "Not signed in",
     "header.openMenu": "Open menu",
     "header.language": "Language",
+    "header.investInAuraTrade": "Invest in AuraTrade",
+    "header.investModalText": "Receive 30% of your investment amount every quarter for two years",
+    "header.contact": "Contact",
+    "header.contactIn": "Wait {sec} sec…",
+    "header.contactSent": "Opened",
+
+    "common.close": "Close",
 
     "mobileNav.trade": "Trade",
     "mobileNav.pairs": "Pairs",
@@ -621,6 +635,13 @@ const messages: Record<Locale, Record<string, string>> = {
     "header.notAuthorized": "No autenticado",
     "header.openMenu": "Abrir menú",
     "header.language": "Idioma",
+    "header.investInAuraTrade": "Invertir en AuraTrade",
+    "header.investModalText": "Reciba el 30% del monto de inversión cada trimestre durante dos años",
+    "header.contact": "Contactar",
+    "header.contactIn": "Espere {sec} seg…",
+    "header.contactSent": "Abierto",
+
+    "common.close": "Cerrar",
 
     "mobileNav.trade": "Trading",
     "mobileNav.pairs": "Pares",

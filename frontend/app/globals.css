@@ -359,6 +359,18 @@ body {
   50% { opacity: 1; }
 }
 
+/* Золотой переливающийся градиент кнопки Invest */
+@keyframes gold-shimmer {
+  0%, 100% { background-position: 100% 0; }
+  50% { background-position: 0 0; }
+}
+
+.btn-invest-gold {
+  background: linear-gradient(105deg, #fbbf24 0%, #fde047 25%, #facc15 50%, #fde047 75%, #fbbf24 100%);
+  background-size: 200% 100%;
+  animation: gold-shimmer 2.5s ease-in-out infinite;
+}
+
 /* Мобильные: ещё меньше blur для экономии GPU */
 @media (max-width: 768px) {
   .gradient-ring {
@@ -371,5 +383,8 @@ body {
   .gradient-ring-1, .gradient-ring-2, .gradient-ring-3 {
     animation: none !important;
     opacity: 0.9;
+  }
+  .btn-invest-gold {
+    animation: none !important;
   }
 }
