@@ -122,7 +122,10 @@ function TradePageContent() {
   const [mobileOrderCollapsed, setMobileOrderCollapsed] = useState(false);
   /** Режим fullscreen графика (мобильные) */
   const [chartFullscreen, setChartFullscreen] = useState(false);
+  /** Открытый выпадающий список в 70% зоне */
+  const [openDropdown, setOpenDropdown] = useState<"chart" | "timeframe" | "indicators" | null>(null);
   const orderSheetRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const timeframeToMs: Record<TimeframeKey, number> = useMemo(
     () => ({
       "30s": 30_000,
@@ -241,6 +244,17 @@ function TradePageContent() {
     const el = document.getElementById("history");
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
+
+  // Закрытие выпадающих списков по клику снаружи
+  useEffect(() => {
+    if (openDropdown == null) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (dropdownRef.current?.contains(e.target as Node)) return;
+      setOpenDropdown(null);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [openDropdown]);
 
   // Резервный опрос цен по API (если WebSocket не доставляет обновления — график всё равно обновляется)
   useEffect(() => {
@@ -532,81 +546,139 @@ function TradePageContent() {
                     recentPairIds={recentPairIds}
                     toggleFavoritePair={toggleFavoritePair}
                     addRecentPair={addRecentPair}
+                    fullWidthOverlay
                   />
                 ) : (
                   <span className="text-[11px] text-slate-500">{t("trade.selectPairInHeader")}</span>
                 )}
               </div>
-              {/* Остальные кнопки в линию — 70% */}
-              <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto surface-scroll flex-wrap">
-                {/* Chart type */}
-                <div className="inline-flex rounded-full glass p-0.5 shrink-0">
+              {/* 3 выпадающих списка — 70% */}
+              <div
+                ref={dropdownRef}
+                className="flex-1 min-w-0 flex items-center gap-2 overflow-visible"
+              >
+                {/* 1. Chart type */}
+                <div className="relative shrink-0">
                   <button
                     type="button"
-                    className={`chip min-h-[32px] px-2.5 text-[11px] py-1 ${chartMode === "line" ? "chip-active" : ""}`}
-                    onClick={() => setChartSettings({ chartMode: "line" })}
+                    onClick={() => setOpenDropdown((d) => (d === "chart" ? null : "chart"))}
+                    className="chip min-h-[34px] px-3 text-[11px] py-1.5 flex items-center gap-1.5 touch-manipulation"
                   >
-                    {t("trade.line")}
+                    <span className="text-slate-500 text-[10px]">{t("trade.chart")}</span>
+                    <span>{chartMode === "line" ? t("trade.line") : t("trade.candles")}</span>
+                    <svg className={`w-3.5 h-3.5 text-slate-500 transition-transform ${openDropdown === "chart" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                   </button>
+                  {openDropdown === "chart" && (
+                    <div className="absolute top-full left-0 mt-1 min-w-[120px] py-1 rounded-lg glass border border-slate-600/60 shadow-xl z-50">
+                      <button
+                        type="button"
+                        onClick={() => { setChartSettings({ chartMode: "line" }); setOpenDropdown(null); }}
+                        className={`w-full text-left px-3 py-2 text-[11px] ${chartMode === "line" ? "text-emerald-400 font-medium" : "text-slate-300"}`}
+                      >
+                        {t("trade.line")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setChartSettings({ chartMode: "candles" }); setOpenDropdown(null); }}
+                        className={`w-full text-left px-3 py-2 text-[11px] ${chartMode === "candles" ? "text-emerald-400 font-medium" : "text-slate-300"}`}
+                      >
+                        {t("trade.candles")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                {/* 2. Timeframe */}
+                <div className="relative shrink-0">
                   <button
                     type="button"
-                    className={`chip min-h-[32px] px-2.5 text-[11px] py-1 ${chartMode === "candles" ? "chip-active" : ""}`}
-                    onClick={() => setChartSettings({ chartMode: "candles" })}
+                    onClick={() => setOpenDropdown((d) => (d === "timeframe" ? null : "timeframe"))}
+                    className="chip min-h-[34px] px-3 text-[11px] py-1.5 flex items-center gap-1.5 touch-manipulation"
                   >
-                    {t("trade.candles")}
+                    <span className="text-slate-500 text-[10px]">{t("trade.timeframe")}</span>
+                    <span>
+                      {timeframe === "30s" && "30с"}
+                      {timeframe === "1m" && "1м"}
+                      {timeframe === "5m" && "5м"}
+                      {timeframe === "10m" && "10м"}
+                      {timeframe === "15m" && "15м"}
+                      {timeframe === "1h" && "1ч"}
+                      {timeframe === "2h" && "2ч"}
+                      {timeframe === "5h" && "5ч"}
+                    </span>
+                    <svg className={`w-3.5 h-3.5 text-slate-500 transition-transform ${openDropdown === "timeframe" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                   </button>
+                  {openDropdown === "timeframe" && (
+                    <div className="absolute top-full left-0 mt-1 min-w-[90px] py-1 rounded-lg glass border border-slate-600/60 shadow-xl z-50 max-h-[40vh] overflow-y-auto overscroll-contain">
+                      {TIMEFRAMES.map((tf) => (
+                        <button
+                          key={tf}
+                          type="button"
+                          onClick={() => { setChartSettings({ timeframe: tf }); setOpenDropdown(null); }}
+                          className={`w-full text-left px-3 py-2 text-[11px] ${timeframe === tf ? "text-emerald-400 font-medium" : "text-slate-300"}`}
+                        >
+                          {tf === "30s" && "30с"}
+                          {tf === "1m" && "1м"}
+                          {tf === "5m" && "5м"}
+                          {tf === "10m" && "10м"}
+                          {tf === "15m" && "15м"}
+                          {tf === "1h" && "1ч"}
+                          {tf === "2h" && "2ч"}
+                          {tf === "5h" && "5ч"}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {/* Timeframe */}
-                <div className="flex items-center gap-1 shrink-0 border-l border-slate-700/50 pl-1.5">
-                  {TIMEFRAMES.map((tf) => (
-                    <button
-                      key={tf}
-                      type="button"
-                      className={`chip min-h-[32px] min-w-[32px] flex items-center justify-center text-[10px] shrink-0 ${timeframe === tf ? "chip-active" : ""}`}
-                      onClick={() => setChartSettings({ timeframe: tf })}
-                    >
-                      {tf === "30s" && "30с"}
-                      {tf === "1m" && "1м"}
-                      {tf === "5m" && "5м"}
-                      {tf === "10m" && "10м"}
-                      {tf === "15m" && "15м"}
-                      {tf === "1h" && "1ч"}
-                      {tf === "2h" && "2ч"}
-                      {tf === "5h" && "5ч"}
-                    </button>
-                  ))}
-                </div>
-                {/* Indicators */}
-                <div className="flex items-center gap-1 shrink-0 border-l border-slate-700/50 pl-1.5">
-                  {[
-                    { key: "ma" as const, label: "MA", on: showMA, set: (v: boolean) => setChartSettings({ showMA: v }) },
-                    { key: "rsi" as const, label: "RSI", on: showRSI, set: (v: boolean) => setChartSettings({ showRSI: v }) },
-                    { key: "macd" as const, label: "MACD", on: showMACD, set: (v: boolean) => setChartSettings({ showMACD: v }) },
-                    { key: "bb" as const, label: "BB", on: showBB, set: (v: boolean) => setChartSettings({ showBB: v }) }
-                  ].map(({ label, on, set }) => (
-                    <button
-                      key={label}
-                      type="button"
-                      className={`chip min-h-[32px] min-w-[32px] flex items-center justify-center text-[10px] shrink-0 ${on ? "chip-active" : ""}`}
-                      onClick={() => set(!on)}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                {/* 3. Indicators */}
+                <div className="relative shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setOpenDropdown((d) => (d === "indicators" ? null : "indicators"))}
+                    className="chip min-h-[34px] px-3 text-[11px] py-1.5 flex items-center gap-1.5 touch-manipulation"
+                  >
+                    <span className="text-slate-500 text-[10px]">{t("trade.indicators")}</span>
+                    <span>{[showMA && "MA", showRSI && "RSI", showMACD && "MACD", showBB && "BB"].filter(Boolean).join(", ") || "—"}</span>
+                    <svg className={`w-3.5 h-3.5 text-slate-500 transition-transform ${openDropdown === "indicators" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {openDropdown === "indicators" && (
+                    <div className="absolute top-full left-0 mt-1 min-w-[100px] py-1 rounded-lg glass border border-slate-600/60 shadow-xl z-50">
+                      {[
+                        { key: "ma" as const, label: "MA", on: showMA, set: (v: boolean) => setChartSettings({ showMA: v }) },
+                        { key: "rsi" as const, label: "RSI", on: showRSI, set: (v: boolean) => setChartSettings({ showRSI: v }) },
+                        { key: "macd" as const, label: "MACD", on: showMACD, set: (v: boolean) => setChartSettings({ showMACD: v }) },
+                        { key: "bb" as const, label: "BB", on: showBB, set: (v: boolean) => setChartSettings({ showBB: v }) }
+                      ].map(({ label, on, set }) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => { set(!on); setOpenDropdown(null); }}
+                          className={`w-full text-left px-3 py-2 text-[11px] flex items-center justify-between ${on ? "text-emerald-400 font-medium" : "text-slate-300"}`}
+                        >
+                          {label}
+                          {on && <span className="text-emerald-400">✓</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {selectedPair && (
-                  <div className="ml-auto flex items-center gap-2 shrink-0 border-l border-slate-700/50 pl-1.5">
+                  <div className="ml-auto flex items-center gap-2 shrink-0 border-l border-slate-700/50 pl-2">
                     <span className="text-[10px] text-slate-500">{t("trade.currentPrice")}</span>
                     <span className="text-sm font-semibold text-accent font-mono">
                       {Number.isNaN(Number(selectedPair.currentPrice)) ? "-" : Number(selectedPair.currentPrice).toFixed(5)}
                     </span>
                   </div>
                 )}
-                {/* Fullscreen кнопка для мобильных */}
                 <button
                   type="button"
                   onClick={() => setChartFullscreen(true)}
-                  className="xl:hidden chip min-h-[32px] min-w-[32px] flex items-center justify-center shrink-0"
+                  className="xl:hidden chip min-h-[34px] min-w-[34px] flex items-center justify-center shrink-0 touch-manipulation"
                   aria-label={t("trade.fullscreenChart")}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -640,18 +712,26 @@ function TradePageContent() {
               </div>
             </div>
 
-          {/* Правая часть. Ордер привязан к низу, всегда виден; активные сделки сверху (сворачиваемый) */}
+          {/* Правая часть. На мобильных: fixed внизу с safe-area; на ПК — обычная колонка */}
           <div
             ref={orderSheetRef}
-            className="flex flex-col gap-3 xl:gap-5 min-h-0 max-h-[85vh] xl:max-h-none animate-fade-in-up stagger-2 opacity-0 absolute bottom-0 left-0 right-0 z-10 xl:static xl:z-0 overflow-y-auto overflow-x-hidden xl:overflow-visible surface-scroll"
+            className="flex flex-col gap-3 xl:gap-5 min-h-0 xl:max-h-none animate-fade-in-up stagger-2 opacity-0 fixed xl:static bottom-0 left-0 right-0 z-20 xl:z-0 xl:bottom-auto xl:left-auto xl:right-auto max-h-[85vh] xl:max-h-none overflow-y-auto overflow-x-hidden xl:overflow-visible overscroll-contain"
+            style={{
+              WebkitOverflowScrolling: "touch",
+              paddingBottom: "env(safe-area-inset-bottom, 0px)"
+            }}
           >
-            {/* Новый ордер — на мобильных: bottom sheet с ручкой; на ПК обычная панель */}
-            <div className="flex flex-col gap-2 xl:gap-5 shrink-0 rounded-t-2xl xl:rounded-2xl p-3 sm:p-4 xl:p-6 transition-shadow duration-300 xl:hover:shadow-soft-glow/20 bg-slate-900/97 backdrop-blur-md border border-slate-700/50 border-t border-slate-600/40 xl:border-t xl:border-b-0 xl:bg-transparent xl:backdrop-blur-none xl:border xl:border-slate-700/50 xl:glass shadow-[0_-4px_24px_rgba(0,0,0,0.3)] xl:shadow-none">
-              {/* Мобильные: ручка для сворачивания */}
+            {/* Новый ордер — bottom sheet на мобильных с sticky низом */}
+            <div
+              className="flex flex-col gap-2 xl:gap-5 shrink-0 rounded-t-2xl xl:rounded-2xl p-3 sm:p-4 xl:p-6 transition-shadow duration-300 xl:hover:shadow-soft-glow/20 bg-slate-900/97 backdrop-blur-md border border-slate-700/50 border-t border-slate-600/40 xl:border-t xl:border-b-0 xl:bg-transparent xl:backdrop-blur-none xl:border xl:border-slate-700/50 xl:glass shadow-[0_-4px_24px_rgba(0,0,0,0.3)] xl:shadow-none touch-manipulation"
+              style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
+            >
+              {/* Мобильные: ручка для сворачивания — увеличенная зона нажатия для touch */}
               <button
                 type="button"
                 onClick={() => setMobileOrderCollapsed((c) => !c)}
-                className="xl:hidden flex items-center justify-center py-2 -mt-1 -mx-2 touch-manipulation active:bg-slate-800/50 rounded-t-2xl transition-colors"
+                onTouchEnd={(e) => e.currentTarget.blur()}
+                className="xl:hidden flex items-center justify-center py-3 -mt-1 -mx-2 touch-manipulation active:bg-slate-800/50 rounded-t-2xl transition-colors min-h-[44px]"
                 aria-label={mobileOrderCollapsed ? t("trade.expandOrder") : t("trade.collapseOrder")}
               >
                 <div className="w-10 h-1 rounded-full bg-slate-600" />

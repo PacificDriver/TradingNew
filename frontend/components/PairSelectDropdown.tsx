@@ -18,6 +18,8 @@ type Props = {
   /** Открыть выпадающий список по запросу (из поиска в шапке) */
   openRequest?: boolean;
   onOpenRequestConsumed?: () => void;
+  /** Открывать список на 100% ширины поверх всего (для мобильной зоны 30%) */
+  fullWidthOverlay?: boolean;
 };
 
 function PairRow({
@@ -89,7 +91,8 @@ export function PairSelectDropdown({
   toggleFavoritePair,
   addRecentPair,
   openRequest,
-  onOpenRequestConsumed
+  onOpenRequestConsumed,
+  fullWidthOverlay = false
 }: Props) {
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
@@ -192,8 +195,22 @@ export function PairSelectDropdown({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-[100] mt-1.5 w-full md:w-[320px] overflow-hidden rounded-xl glass-strong shadow-2xl">
-          <div className="border-b border-slate-800 p-2">
+        <div
+          className={
+            fullWidthOverlay
+              ? "fixed inset-0 z-[200] flex flex-col"
+              : "absolute left-0 top-full z-[100] mt-1.5 w-full md:w-[320px] overflow-hidden rounded-xl glass-strong shadow-2xl"
+          }
+        >
+          {fullWidthOverlay && (
+            <div
+              className="absolute inset-0 bg-black/50"
+              onClick={() => setOpen(false)}
+              aria-hidden
+            />
+          )}
+          <div className={fullWidthOverlay ? "relative z-10 flex flex-col mx-4 mt-[max(1rem,env(safe-area-inset-top))] mb-4 max-h-[calc(100vh-2rem)] rounded-xl overflow-hidden glass-strong shadow-2xl border border-slate-600/60" : "contents"}>
+          <div className={`border-b border-slate-800 p-2 ${fullWidthOverlay ? "shrink-0 px-4 py-3" : ""}`}>
             <div className="flex items-center gap-2 rounded-lg glass px-3 py-2">
               <svg className="h-4 w-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -208,7 +225,7 @@ export function PairSelectDropdown({
               />
             </div>
           </div>
-          <div className="max-h-[360px] overflow-y-auto py-1 surface-scroll">
+          <div className={`overflow-y-auto py-1 surface-scroll ${fullWidthOverlay ? "flex-1 min-h-0 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]" : "max-h-[360px]"}`}>
             {totalVisible === 0 ? (
               <div className="px-4 py-6 text-center text-sm text-slate-500">
                 {t("pairs.noResults")}
