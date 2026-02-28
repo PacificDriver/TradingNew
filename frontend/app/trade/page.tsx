@@ -826,10 +826,10 @@ function TradePageContent() {
             </div>
           </div>
 
-          {/* Правая часть. На мобильных: ордер внизу (фиксирован), активные сделки сверху */}
+          {/* Правая часть. Ордер сверху, активные сделки внизу (сворачиваемый блок) */}
           <div
             ref={orderSheetRef}
-            className="flex flex-col-reverse xl:flex-col gap-4 xl:gap-5 min-h-0 max-h-[85vh] xl:max-h-none animate-fade-in-up stagger-2 opacity-0 absolute bottom-0 left-0 right-0 z-10 xl:static xl:z-0 overflow-y-auto overflow-x-hidden xl:overflow-visible surface-scroll"
+            className="flex flex-col gap-3 xl:gap-5 min-h-0 max-h-[85vh] xl:max-h-none animate-fade-in-up stagger-2 opacity-0 absolute bottom-0 left-0 right-0 z-10 xl:static xl:z-0 overflow-y-auto overflow-x-hidden xl:overflow-visible surface-scroll"
           >
             {/* Новый ордер — на мобильных: bottom sheet с ручкой; на ПК обычная панель */}
             <div className="flex flex-col gap-2 xl:gap-5 shrink-0 rounded-t-2xl xl:rounded-2xl p-3 sm:p-4 xl:p-6 transition-shadow duration-300 xl:hover:shadow-soft-glow/20 bg-slate-900/97 backdrop-blur-md border border-slate-700/50 border-t border-slate-600/40 xl:border-t xl:border-b-0 xl:bg-transparent xl:backdrop-blur-none xl:border xl:border-slate-700/50 xl:glass shadow-[0_-4px_24px_rgba(0,0,0,0.3)] xl:shadow-none">
@@ -860,180 +860,76 @@ function TradePageContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-2 xl:gap-5">
-                {/* Мобильные: сумма, время, preset, кнопки LONG/SHORT */}
-                <div className="xl:hidden flex flex-col gap-3">
-                  {!mobileOrderCollapsed && (
-                  <>
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <label className="text-slate-500 text-sm shrink-0">$</label>
-                      <input
-                        type="number"
-                        inputMode="decimal"
-                        min={1}
-                        step={1}
-                        value={amount}
-                        onChange={(e) =>
-                          setAmount(Math.max(1, Number(e.target.value) || 1))
-                        }
-                        className="w-20 input-glass py-3 text-base font-mono min-h-[48px] text-center"
-                      />
-                      <div className="flex gap-2 flex-wrap">
-                        {[1, 5, 10, 25, 50].map((v) => (
-                          <button
-                            key={v}
-                            type="button"
-                            onClick={() => setAmount(v)}
-                            className={`rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center text-sm font-medium touch-manipulation ${
-                              amount === v ? "chip-active" : "glass"
-                            }`}
-                          >
-                            ${v}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        min={60}
-                        step={15}
-                        value={duration}
-                        onChange={(e) =>
-                          setDuration(Math.max(60, Number(e.target.value) || 60))
-                        }
-                        className="w-16 input-glass py-3 text-base font-mono min-h-[48px] text-center"
-                      />
-                      <span className="text-slate-500 text-sm shrink-0">{t("trade.sec")}</span>
-                      <div className="flex gap-2 flex-wrap">
-                        {[60, 120, 180].map((v) => (
-                          <button
-                            key={v}
-                            type="button"
-                            onClick={() => setDuration(v)}
-                            className={`rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center text-sm font-medium touch-manipulation ${
-                              duration === v ? "chip-active" : "glass"
-                            }`}
-                          >
-                            {v}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  </>
-                  )}
-                  <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
+                {/* Строка: сумма + время — в одну линию на всех экранах */}
+                {!mobileOrderCollapsed && (
+                <div className="flex flex-row items-center gap-1.5 sm:gap-3 flex-nowrap">
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-slate-500 text-xs sm:text-sm">$</span>
                     <button
                       type="button"
-                      className="rounded-xl min-h-[52px] py-3 text-base font-semibold bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 touch-manipulation shadow-[0_0_16px_rgba(16,185,129,0.2)] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      disabled={placing}
-                      onClick={() => place("LONG")}
+                      onClick={() => setAmount((a) => Math.max(1, a - 15))}
+                      className="chip min-h-[36px] min-w-[36px] sm:min-h-[40px] sm:min-w-[40px] flex items-center justify-center text-sm font-medium touch-manipulation"
                     >
-                      {placing ? (
-                        <span className="h-5 w-5 rounded-full border-2 border-slate-900/30 border-t-slate-900 animate-spin" />
-                      ) : null}
-                      LONG ↑
+                      −15
                     </button>
-                    <button
-                      type="button"
-                      className="rounded-xl min-h-[52px] py-3 text-base font-semibold bg-orange-500/95 hover:bg-orange-400 active:scale-[0.98] text-slate-950 touch-manipulation shadow-[0_0_16px_rgba(249,115,22,0.2)] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      disabled={placing}
-                      onClick={() => place("SHORT")}
-                    >
-                      {placing ? (
-                        <span className="h-5 w-5 rounded-full border-2 border-slate-900/30 border-t-slate-900 animate-spin" />
-                      ) : null}
-                      SHORT ↓
-                    </button>
-                  </div>
-                </div>
-                <div className="hidden xl:block">
-                  <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-500 mb-2">
-                    {t("trade.amountLabel")}
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2">
                     <input
                       type="number"
+                      inputMode="decimal"
                       min={1}
                       step={1}
                       value={amount}
                       onChange={(e) =>
                         setAmount(Math.max(1, Number(e.target.value) || 1))
                       }
-                      className="w-20 sm:w-24 input-glass py-3 xl:py-2.5 text-base xl:text-sm font-mono min-h-[48px] xl:min-h-0"
+                      className="w-14 sm:w-16 input-glass py-2 sm:py-2.5 text-sm sm:text-base font-mono min-h-[36px] sm:min-h-[40px] text-center shrink-0"
                     />
-                    <div className="flex flex-wrap gap-2">
-                      {[1, 5, 10, 25, 50].map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => setAmount(v)}
-                          className={`chip rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-2.5 xl:min-h-0 xl:min-w-0 text-sm xl:text-xs font-medium ${
-                            amount === v
-                              ? "chip-active"
-                              : ""
-                          }`}
-                        >
-                          ${v}
-                        </button>
-                      ))}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAmount((a) => a + 15)}
+                      className="chip min-h-[36px] min-w-[36px] sm:min-h-[40px] sm:min-w-[40px] flex items-center justify-center text-sm font-medium touch-manipulation"
+                    >
+                      +15
+                    </button>
                   </div>
-                </div>
-
-                <div className="hidden xl:block">
-                  <label className="block text-[11px] font-medium uppercase tracking-wider text-slate-500 mb-2">
-                    {t("trade.expiryLabel")}
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1 shrink-0">
                     <input
                       type="number"
+                      inputMode="numeric"
                       min={60}
                       step={15}
                       value={duration}
                       onChange={(e) =>
                         setDuration(Math.max(60, Number(e.target.value) || 60))
                       }
-                      className="w-20 sm:w-24 input-glass py-3 xl:py-2.5 text-base xl:text-sm font-mono min-h-[48px] xl:min-h-0"
+                      className="w-14 sm:w-16 input-glass py-2 sm:py-2.5 text-sm sm:text-base font-mono min-h-[36px] sm:min-h-[40px] text-center shrink-0"
                     />
-                    <span className="text-slate-500 text-xs">{t("trade.sec")}</span>
-                    <div className="flex flex-wrap gap-2">
-                      {[60, 120, 180].map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          onClick={() => setDuration(v)}
-                          className={`chip rounded-lg min-h-[44px] min-w-[44px] flex items-center justify-center px-3 py-2.5 xl:min-h-0 xl:min-w-0 text-sm xl:text-xs font-medium ${
-                            duration === v
-                              ? "chip-active"
-                              : ""
-                          }`}
-                        >
-                          {v}s
-                        </button>
-                      ))}
-                    </div>
+                    <span className="text-slate-500 text-xs sm:text-sm shrink-0">{t("trade.sec")}</span>
                   </div>
                 </div>
-
-                <div className="hidden xl:grid grid-cols-2 gap-3 pt-2">
+                )}
+                {/* Кнопки LONG / SHORT */}
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <button
                     type="button"
-                    className="rounded-xl min-h-[52px] xl:min-h-0 py-4 xl:py-3 text-base xl:text-sm font-semibold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-[0_0_20px_rgba(16,185,129,0.25)] transition-all active:scale-[0.98] touch-manipulation"
+                    className="rounded-xl min-h-[48px] sm:min-h-[52px] py-3 text-base font-semibold bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 touch-manipulation shadow-[0_0_16px_rgba(16,185,129,0.2)] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     disabled={placing}
                     onClick={() => place("LONG")}
                   >
+                    {placing ? (
+                      <span className="h-5 w-5 rounded-full border-2 border-slate-900/30 border-t-slate-900 animate-spin" />
+                    ) : null}
                     LONG ↑
                   </button>
                   <button
                     type="button"
-                    className="rounded-xl min-h-[52px] xl:min-h-0 py-4 xl:py-3 text-base xl:text-sm font-semibold bg-orange-500/95 hover:bg-orange-400 text-slate-950 shadow-[0_0_20px_rgba(249,115,22,0.25)] transition-all active:scale-[0.98] touch-manipulation"
+                    className="rounded-xl min-h-[48px] sm:min-h-[52px] py-3 text-base font-semibold bg-orange-500/95 hover:bg-orange-400 active:scale-[0.98] text-slate-950 touch-manipulation shadow-[0_0_16px_rgba(249,115,22,0.2)] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     disabled={placing}
                     onClick={() => place("SHORT")}
                   >
+                    {placing ? (
+                      <span className="h-5 w-5 rounded-full border-2 border-slate-900/30 border-t-slate-900 animate-spin" />
+                    ) : null}
                     SHORT ↓
                   </button>
                 </div>
@@ -1053,8 +949,8 @@ function TradePageContent() {
                 )}
               </div>
             </div>
-            {/* Активные сделки — на мобильных: одна полоса, карточки уходят вправо со скроллом (не двигают ордер) */}
-            <div className="shrink-0 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:overflow-visible">
+            {/* Активные сделки — внизу, ультра компактный сворачиваемый блок */}
+            <div className="shrink-0">
               <ActiveTrades />
             </div>
           </div>
@@ -1076,93 +972,72 @@ function TradePageContent() {
 function ActiveTrades() {
   const { t } = useLocale();
   const active = useTradingStore((s) => s.activeTrades);
+  const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="flex flex-col min-h-0 flex-1 glass rounded-t-2xl xl:rounded-b-2xl p-3 sm:p-4 xl:p-6">
-      <div className="flex items-center justify-between mb-3 shrink-0">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+    <div className="flex flex-col min-h-0 glass rounded-xl xl:rounded-2xl overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="flex items-center justify-between w-full py-2 px-3 sm:px-4 min-h-[40px] shrink-0 hover:bg-slate-800/40 active:bg-slate-800/60 transition-colors touch-manipulation"
+      >
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
           {t("trade.activeTradesTitle")}
-        </h2>
-        {active.length > 0 && (
-          <span className="text-[10px] text-slate-500">{active.length}</span>
-        )}
-      </div>
+        </span>
+        <span className="flex items-center gap-1.5">
+          {active.length > 0 && (
+            <span className="text-[10px] text-slate-500 bg-slate-800/60 px-1.5 py-0.5 rounded">
+              {active.length}
+            </span>
+          )}
+          <svg
+            className={`w-4 h-4 text-slate-500 transition-transform ${expanded ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </span>
+      </button>
 
-      {active.length === 0 ? (
-        <div className="text-xs text-slate-500 py-4 text-center">
-          {t("trade.noActiveHint")}
-        </div>
-      ) : (
-        <>
-          {/* Мобильные: горизонтальный скролл карточек */}
-          <div className="xl:hidden overflow-x-auto overflow-y-hidden rounded-lg bg-slate-950/40 surface-scroll -mx-1 px-1 pb-1">
-            <div className="flex gap-2 pb-2">
-              {active.map((trade) => (
-                <div
-                  key={trade.id}
-                  className="flex shrink-0 items-center gap-2 py-2.5 px-3 rounded-xl bg-slate-800/60 min-h-[48px] touch-manipulation"
-                >
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="font-mono text-slate-100 text-sm truncate max-w-[80px] sm:max-w-[100px]">
-                      {trade.tradingPair?.symbol ?? trade.tradingPairId}
-                    </span>
-                    <span
-                      className={`px-1 py-0.5 rounded text-[9px] font-medium shrink-0 ${
-                        trade.direction === "LONG"
-                          ? "bg-emerald-500/15 text-emerald-400"
-                          : "bg-orange-500/15 text-orange-400"
-                      }`}
-                    >
-                      {trade.direction}
-                    </span>
-                  </div>
-                  <span className="font-mono text-slate-300 text-xs shrink-0">${Number(trade.amount).toFixed(0)}</span>
-                  <Countdown expiresAt={trade.expiresAt} compact />
-                </div>
-              ))}
+      {expanded && (
+        <div className="border-t border-slate-700/50 p-2 sm:p-3 max-h-[200px] overflow-y-auto overflow-x-hidden surface-scroll">
+          {active.length === 0 ? (
+            <div className="text-[11px] text-slate-500 py-3 text-center">
+              {t("trade.noActiveHint")}
             </div>
-          </div>
-          {/* ПК: обычная таблица */}
-          <div className="hidden xl:block min-h-0 overflow-auto rounded-lg bg-slate-950/40 surface-scroll">
-            <table className="min-w-full text-[11px]">
-              <thead className="sticky top-0 z-10 glass-strong rounded-none text-[10px] uppercase tracking-wider text-slate-500 border-b border-white/5">
-                <tr>
-                  <th className="px-3 py-2.5 text-left font-medium">{t("trade.pair")}</th>
-                  <th className="px-3 py-2.5 text-right font-medium">$</th>
-                  <th className="px-3 py-2.5 text-right font-medium">{t("trade.untilExpiry")}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/80">
-                {active.map((tr) => (
-                  <tr key={tr.id} className="hover:bg-slate-800/50 min-h-[44px]">
-                    <td className="px-3 py-2.5 align-middle">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-slate-100">
-                          {tr.tradingPair?.symbol ?? tr.tradingPairId}
-                        </span>
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                            tr.direction === "LONG"
-                              ? "bg-emerald-500/15 text-emerald-400"
-                              : "bg-orange-500/15 text-orange-400"
-                          }`}
-                        >
-                          {tr.direction}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-mono text-slate-300">
-                      ${Number(tr.amount).toFixed(0)}
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <Countdown expiresAt={tr.expiresAt} compact />
-                    </td>
-                  </tr>
+          ) : (
+            <>
+              {/* Компактный список — одна строка на сделку */}
+              <div className="flex flex-col gap-1">
+                {active.map((trade) => (
+                  <div
+                    key={trade.id}
+                    className="flex items-center justify-between gap-2 py-1.5 px-2 rounded-lg bg-slate-800/40 text-[11px]"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0 shrink">
+                      <span className="font-mono text-slate-100 truncate max-w-[60px] sm:max-w-[80px]">
+                        {trade.tradingPair?.symbol ?? trade.tradingPairId}
+                      </span>
+                      <span
+                        className={`px-1 py-0.5 rounded text-[9px] font-medium shrink-0 ${
+                          trade.direction === "LONG"
+                            ? "bg-emerald-500/15 text-emerald-400"
+                            : "bg-orange-500/15 text-orange-400"
+                        }`}
+                      >
+                        {trade.direction}
+                      </span>
+                    </div>
+                    <span className="font-mono text-slate-300 shrink-0">${Number(trade.amount).toFixed(0)}</span>
+                    <Countdown expiresAt={trade.expiresAt} compact />
+                  </div>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+              </div>
+            </>
+          )}
+        </div>
       )}
     </div>
   );
