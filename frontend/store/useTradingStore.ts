@@ -198,6 +198,10 @@ export const useTradingStore = create<State & Actions>()(
         }),
       applyTradeUpdate: (trade) =>
         set((state) => {
+          const tradeUserId = (trade as { userId?: number }).userId;
+          if (state.user && tradeUserId != null && tradeUserId !== state.user.id) {
+            return state;
+          }
           const isCompleted = trade.status !== "ACTIVE";
           const active = state.activeTrades.filter((t) => t.id !== trade.id);
           const completed = state.completedTrades.filter(

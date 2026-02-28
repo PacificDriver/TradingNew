@@ -666,7 +666,7 @@ function TradePageContent() {
                   )}
                 </div>
                 {selectedPair && (
-                  <div className="ml-auto flex items-center gap-2 shrink-0 border-l border-slate-700/50 pl-2">
+                  <div className="xl:flex hidden ml-auto items-center gap-2 shrink-0 border-l border-slate-700/50 pl-2">
                     <span className="text-[10px] text-slate-500">{t("trade.currentPrice")}</span>
                     <span className="text-sm font-semibold text-accent font-mono">
                       {Number.isNaN(Number(selectedPair.currentPrice)) ? "-" : Number(selectedPair.currentPrice).toFixed(5)}
@@ -687,7 +687,16 @@ function TradePageContent() {
             </div>
             {/* Область графика — сразу после строки контролов */}
               <div className={"mt-2 min-h-[200px] sm:min-h-[260px] xl:min-h-[380px] flex-1 w-full min-w-0 overflow-x-auto overflow-y-hidden xl:overflow-hidden flex flex-col relative surface-scroll transition-[padding-bottom] duration-300 " + chartAreaPadding}>
-              <div className="min-w-[min(100%,800px)] xl:min-w-0 h-full flex flex-col">
+              <div className="min-w-[min(100%,800px)] xl:min-w-0 h-full flex flex-col relative">
+              {/* Current price overlay — на мобильных справа сверху на графике */}
+              {selectedPair && (
+                <div className="xl:hidden absolute top-3 right-3 z-10 px-3 py-1.5 rounded-lg glass border border-slate-600/50 backdrop-blur-md shadow-lg">
+                  <span className="text-[10px] text-slate-500 block">{t("trade.currentPrice")}</span>
+                  <span className="text-sm font-semibold text-accent font-mono">
+                    {Number.isNaN(Number(selectedPair.currentPrice)) ? "-" : Number(selectedPair.currentPrice).toFixed(5)}
+                  </span>
+                </div>
+              )}
               <PriceChart
                 candles={candles}
                 markers={markers}
@@ -710,10 +719,10 @@ function TradePageContent() {
               </div>
             </div>
 
-          {/* Правая часть. На мобильных: fixed внизу с safe-area; на ПК — обычная колонка */}
+          {/* Правая часть. На мобильных: fixed внизу, ордер сверху, активные трейды под ним; на ПК — обычная колонка */}
           <div
             ref={orderSheetRef}
-            className="flex flex-col-reverse xl:flex-col gap-0 xl:gap-5 min-h-0 xl:max-h-none animate-fade-in-up stagger-2 opacity-0 fixed xl:static bottom-0 left-0 right-0 z-20 xl:z-0 xl:bottom-auto xl:left-auto xl:right-auto max-h-[85vh] xl:max-h-none overflow-hidden xl:overflow-visible overscroll-contain"
+            className="flex flex-col xl:flex-col gap-0 xl:gap-5 min-h-0 xl:max-h-none animate-fade-in-up stagger-2 opacity-0 fixed xl:static bottom-0 left-0 right-0 z-20 xl:z-0 xl:bottom-auto xl:left-auto xl:right-auto max-h-[85vh] xl:max-h-none overflow-hidden xl:overflow-visible overscroll-contain"
             style={{
               paddingBottom: "env(safe-area-inset-bottom, 0px)"
             }}

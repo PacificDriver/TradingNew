@@ -44,7 +44,10 @@ export function WebSocketBridge() {
         if (msg.type === "price") {
           upsertPrice(msg.pairId, msg.price);
         } else if (msg.type === "tradeUpdate") {
-          applyTradeUpdate(msg.trade);
+          const trade = msg.trade as { userId?: number };
+          if (user && trade?.userId === user.id) {
+            applyTradeUpdate(msg.trade);
+          }
         }
       } catch {
         // ignore malformed for MVP
