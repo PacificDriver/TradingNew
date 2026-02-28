@@ -1,12 +1,50 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useLocale } from "../../../lib/i18n";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AuthGuard } from "../../../components/AuthGuard";
 import { useTradingStore } from "../../../store/useTradingStore";
 import { apiFetch, authHeaders, isAuthError } from "../../../lib/api";
+
+const STORAGE_KEY_SOUND = "admin_support_sound_enabled";
+
+function playNotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 800;
+    osc.type = "sine";
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.25);
+  } catch {
+    // ignore
+  }
+}
+
+function getStoredSoundEnabled(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const v = localStorage.getItem(STORAGE_KEY_SOUND);
+    return v === null || v === "true";
+  } catch {
+    return true;
+  }
+}
+
+function setStoredSoundEnabled(value: boolean) {
+  try {
+    localStorage.setItem(STORAGE_KEY_SOUND, String(value));
+  } catch {
+    // ignore
+  }
+}
 
 type Message = { id: number; role: string; body: string; createdAt: string };
 type ThreadSummary = {
@@ -37,7 +75,14 @@ export default function AdminSupportPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
+  const prevLastMessageByThreadRef = useRef<Map<number, string>>(new Map());
+  const initialLoadRef = useRef(true);
+
+  useEffect(() => {
+    setSoundEnabled(getStoredSoundEnabled());
+  }, []);
 
   useEffect(() => {
     if (!authChecked) return;
@@ -47,13 +92,35 @@ export default function AdminSupportPage() {
     }
   }, [authChecked, user, router]);
 
-  const fetchThreads = async () => {
+  const fetchThreads = useCallback(async () => {
     if (!token) return;
     try {
       const data = await apiFetch<{ threads: ThreadSummary[] }>("/support/threads", {
         headers: authHeaders(token)
       });
-      setThreads(data.threads ?? []);
+      const nextThreads = data.threads ?? [];
+
+      if (!initialLoadRef.current && getStoredSoundEnabled()) {
+        for (const t of nextThreads) {
+          const lm = t.lastMessage;
+          if (lm && lm.role === "user") {
+            const prev = prevLastMessageByThreadRef.current.get(t.id);
+            if (prev !== lm.createdAt) {
+              playNotificationSound();
+              break;
+            }
+          }
+        }
+      }
+      initialLoadRef.current = false;
+
+      const next = new Map<number, string>();
+      for (const t of nextThreads) {
+        if (t.lastMessage) next.set(t.id, t.lastMessage.createdAt);
+      }
+      prevLastMessageByThreadRef.current = next;
+
+      setThreads(nextThreads);
     } catch (err) {
       if (isAuthError(err)) {
         clearAuth();
@@ -62,11 +129,19 @@ export default function AdminSupportPage() {
     } finally {
       setLoadingThreads(false);
     }
-  };
+  }, [token, clearAuth]);
+
+  const toggleSound = useCallback(() => {
+    setSoundEnabled((v) => {
+      const next = !v;
+      setStoredSoundEnabled(next);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     fetchThreads();
-  }, [token]);
+  }, [fetchThreads]);
 
   useEffect(() => {
     if (!token || !user?.isAdmin) return;
@@ -164,12 +239,35 @@ export default function AdminSupportPage() {
         <div className="lg:w-80 shrink-0">
           <div className="flex items-center justify-between mb-4">
             <h1 className="font-display text-xl font-semibold text-slate-100">{t("support.title")}</h1>
-            <Link
-              href="/admin"
-              className="text-sm text-slate-500 hover:text-slate-300"
-            >
-              {t("support.adminBack")}
-            </Link>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleSound}
+                className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  soundEnabled ? "bg-accent/20 text-accent" : "bg-slate-800/60 text-slate-500"
+                }`}
+                title={soundEnabled ? t("admin.soundOff") : t("admin.soundOn")}
+                aria-label={soundEnabled ? t("admin.soundOff") : t("admin.soundOn")}
+                aria-pressed={!soundEnabled}
+              >
+                {soundEnabled ? (
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z" />
+                  </svg>
+                )}
+                <span className="hidden sm:inline">{soundEnabled ? t("admin.soundOff") : t("admin.soundOn")}</span>
+              </button>
+              <Link
+                href="/admin"
+                className="text-sm text-slate-500 hover:text-slate-300"
+              >
+                {t("support.adminBack")}
+              </Link>
+            </div>
           </div>
           <p className="text-sm text-slate-500 mb-4">{t("admin.supportChats")}</p>
           <div className="glass-panel overflow-hidden rounded-xl">

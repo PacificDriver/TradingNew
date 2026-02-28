@@ -46,6 +46,19 @@ const messages: Record<Locale, Record<string, string>> = {
 
     "common.close": "Закрыть",
 
+    "invest.title": "Инвестиции в AuraTrade",
+    "invest.subtitle": "Получайте стабильный доход от инвестиций в торговую платформу",
+    "invest.card1Title": "Условия участия",
+    "invest.card1p1": "Получайте 30% от суммы вклада каждый квартал на протяжении двух лет.",
+    "invest.card1p2": "Вознаграждение выплачивается 8 раз: раз в квартал. Минимальная сумма вклада обсуждается индивидуально.",
+    "invest.card1p3": "Срок действия программы — 24 месяца с момента заключения договора.",
+    "invest.card2Title": "Как это работает",
+    "invest.card2p1": "Инвестиции направляются в развитие торговой инфраструктуры AuraTrade.",
+    "invest.card2p2": "Доходность фиксирована и не зависит от рыночной волатильности.",
+    "invest.card2p3": "Для уточнения деталей и заключения договора свяжитесь с нами по электронной почте.",
+    "invest.cta": "Инвестировать",
+    "invest.mailtoSubject": "Инвестирование в AuraTrade",
+
     "mobileNav.trade": "Торговля",
     "mobileNav.pairs": "Пары",
     "mobileNav.history": "История",
@@ -305,6 +318,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "admin.noTickets": "Нет обращений",
     "admin.replyPlaceholder": "Ответ пользователю…",
     "admin.send": "Отправить",
+    "admin.soundOn": "Звук вкл",
+    "admin.soundOff": "Звук выкл",
 
     "support.subtitle": "Поддержка",
     "support.today": "Сегодня",
@@ -345,6 +360,19 @@ const messages: Record<Locale, Record<string, string>> = {
     "header.contactSent": "Opened",
 
     "common.close": "Close",
+
+    "invest.title": "Invest in AuraTrade",
+    "invest.subtitle": "Earn steady returns from your investment in the trading platform",
+    "invest.card1Title": "Participation terms",
+    "invest.card1p1": "Receive 30% of your investment amount every quarter for two years.",
+    "invest.card1p2": "Returns are paid 8 times: once per quarter. Minimum investment amount is discussed individually.",
+    "invest.card1p3": "The program runs for 24 months from the date of contract signing.",
+    "invest.card2Title": "How it works",
+    "invest.card2p1": "Investments fund the development of AuraTrade's trading infrastructure.",
+    "invest.card2p2": "Returns are fixed and independent of market volatility.",
+    "invest.card2p3": "Contact us by email to clarify details and sign the agreement.",
+    "invest.cta": "Invest",
+    "invest.mailtoSubject": "AuraTrade Investment",
 
     "mobileNav.trade": "Trade",
     "mobileNav.pairs": "Pairs",
@@ -605,6 +633,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "admin.noTickets": "No tickets",
     "admin.replyPlaceholder": "Reply to user…",
     "admin.send": "Send",
+    "admin.soundOn": "Sound on",
+    "admin.soundOff": "Sound off",
 
     "support.subtitle": "Support",
     "support.today": "Today",
@@ -645,6 +675,19 @@ const messages: Record<Locale, Record<string, string>> = {
     "header.contactSent": "Abierto",
 
     "common.close": "Cerrar",
+
+    "invest.title": "Invertir en AuraTrade",
+    "invest.subtitle": "Obtenga ingresos estables de su inversión en la plataforma de trading",
+    "invest.card1Title": "Condiciones de participación",
+    "invest.card1p1": "Reciba el 30% del monto de inversión cada trimestre durante dos años.",
+    "invest.card1p2": "Los rendimientos se pagan 8 veces: una vez por trimestre. El monto mínimo de inversión se discute individualmente.",
+    "invest.card1p3": "El programa tiene una duración de 24 meses desde la firma del contrato.",
+    "invest.card2Title": "Cómo funciona",
+    "invest.card2p1": "Las inversiones financian el desarrollo de la infraestructura de trading de AuraTrade.",
+    "invest.card2p2": "Los rendimientos son fijos e independientes de la volatilidad del mercado.",
+    "invest.card2p3": "Contáctenos por correo electrónico para aclarar detalles y firmar el acuerdo.",
+    "invest.cta": "Invertir",
+    "invest.mailtoSubject": "Inversión en AuraTrade",
 
     "mobileNav.trade": "Trading",
     "mobileNav.pairs": "Pares",
@@ -905,6 +948,8 @@ const messages: Record<Locale, Record<string, string>> = {
     "admin.noTickets": "Sin consultas",
     "admin.replyPlaceholder": "Responder al usuario…",
     "admin.send": "Enviar",
+    "admin.soundOn": "Sonido on",
+    "admin.soundOff": "Sonido off",
 
     "support.subtitle": "Soporte",
     "support.today": "Hoy",
