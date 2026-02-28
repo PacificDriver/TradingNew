@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { AuthGuard } from "../../components/AuthGuard";
-import { setSupportLastSeen } from "../../hooks/useSupportUnread";
+import { setSupportLastSeen } from "../../lib/useSupportUnread";
 import { useTradingStore } from "../../store/useTradingStore";
 import { apiFetch, authHeaders, isAuthError, getDisplayMessage } from "../../lib/api";
 import { useLocale } from "../../lib/i18n";

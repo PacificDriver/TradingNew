@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useTradingStore, type TradingPair } from "../store/useTradingStore";
 import { apiFetch, authHeaders } from "../lib/api";
 import { useLocale } from "../lib/i18n";
-import { useSupportUnread } from "../hooks/useSupportUnread";
+import { useSupportUnread } from "../lib/useSupportUnread";
 import { ChartLogo } from "./ChartLogo";
 import { InvestButton } from "./InvestButton";
 import { LanguageSwitcher } from "./LanguageSwitcher";

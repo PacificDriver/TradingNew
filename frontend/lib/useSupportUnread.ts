@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useTradingStore } from "../store/useTradingStore";
-import { apiFetch, authHeaders, isAuthError } from "../lib/api";
+import { apiFetch, authHeaders, isAuthError } from "./api";
 
 const STORAGE_KEY = "support_last_seen_at";
 const POLL_INTERVAL_MS = 30000;
