@@ -118,13 +118,10 @@ function TradePageContent() {
   const [duration, setDuration] = useState(60);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** На мобильных: какое выпадающее меню на графике открыто */
-  const [mobileChartMenu, setMobileChartMenu] = useState<"chart" | "timeframe" | "indicators" | null>(null);
   /** Панель ордера: false = развёрнута, true = свёрнута (только ручка + кнопки LONG/SHORT) */
   const [mobileOrderCollapsed, setMobileOrderCollapsed] = useState(false);
   /** Режим fullscreen графика (мобильные) */
   const [chartFullscreen, setChartFullscreen] = useState(false);
-  const mobileMenuRef = useRef<HTMLDivElement>(null);
   const orderSheetRef = useRef<HTMLDivElement>(null);
   const timeframeToMs: Record<TimeframeKey, number> = useMemo(
     () => ({
@@ -244,17 +241,6 @@ function TradePageContent() {
     const el = document.getElementById("history");
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
-
-  // Закрытие выпадающих меню на графике (мобильные) по клику снаружи
-  useEffect(() => {
-    if (mobileChartMenu == null) return;
-    const onPointerDown = (e: PointerEvent) => {
-      if (mobileMenuRef.current?.contains(e.target as Node)) return;
-      setMobileChartMenu(null);
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, [mobileChartMenu]);
 
   // Резервный опрос цен по API (если WebSocket не доставляет обновления — график всё равно обновляется)
   useEffect(() => {
@@ -529,111 +515,54 @@ function TradePageContent() {
         <div className="relative grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] gap-0 xl:gap-6 min-h-0 xl:min-h-[480px] flex-1 items-stretch">
           {/* Левая часть — пара + график. На мобильных без рамки, график во всю ширину */}
           <div className="flex flex-col gap-2 xl:gap-4 min-h-0 min-w-0 overflow-hidden flex-1 rounded-none border-0 bg-transparent px-2 sm:px-3 py-2 -mx-2 sm:-mx-1 xl:mx-0 xl:glass xl:rounded-2xl xl:p-6 animate-fade-in-up stagger-1 opacity-0 transition-shadow duration-300 xl:hover:shadow-soft-glow/30">
-            <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
-              <div className="flex items-center gap-2 min-w-0 flex-1 basis-full sm:basis-auto">
-                {/* Мобильные: полный выбор пары (перенесён из шапки) */}
-                <div className="flex md:hidden min-w-0 flex-1">
-                  {pairs.length > 0 ? (
-                    <PairSelectDropdown
-                      pairs={pairs}
-                      selectedPair={selectedPair ?? null}
-                      onSelectPair={(pair) => {
-                        setChartSettings({ selectedPairId: pair.id });
-                        addRecentPair(pair.id);
-                        router.replace(`/trade?pairId=${pair.id}`, { scroll: false });
-                      }}
-                      favoritePairIds={favoritePairIds}
-                      recentPairIds={recentPairIds}
-                      toggleFavoritePair={toggleFavoritePair}
-                      addRecentPair={addRecentPair}
-                    />
-                  ) : (
-                    <span className="text-[11px] text-slate-500">{t("trade.selectPairInHeader")}</span>
-                  )}
-                </div>
-                {/* ПК: 3 избранные/недавние пары */}
-                <div className="hidden md:flex items-center gap-2">
-                  {quickPairs.length > 0 ? (
-                    quickPairs.map((pair) => (
-                      <button
-                        key={pair.id}
-                        type="button"
-                        onClick={() => {
-                          setChartSettings({ selectedPairId: pair.id });
-                          addRecentPair(pair.id);
-                          router.replace(`/trade?pairId=${pair.id}`, { scroll: false });
-                        }}
-                        className={`chip text-xs font-mono min-h-[44px] min-w-[44px] flex items-center justify-center px-3 xl:min-h-0 xl:min-w-0 xl:px-2.5 xl:py-1 ${
-                          selectedPair?.id === pair.id ? "chip-active" : ""
-                        }`}
-                      >
-                        {pair.symbol}
-                      </button>
-                    ))
-                  ) : (
-                    <span className="text-[11px] text-slate-500">{t("trade.selectPairInHeader")}</span>
-                  )}
-                </div>
+            {/* Верхняя строка: выбор пары 30% + остальные кнопки 70% */}
+            <div className="flex items-center gap-2 sm:gap-3 flex-nowrap w-full shrink-0">
+              {/* Выбор криптовалюты — 30% ширины */}
+              <div className="w-[30%] min-w-0 shrink-0 flex items-center">
+                {pairs.length > 0 ? (
+                  <PairSelectDropdown
+                    pairs={pairs}
+                    selectedPair={selectedPair ?? null}
+                    onSelectPair={(pair) => {
+                      setChartSettings({ selectedPairId: pair.id });
+                      addRecentPair(pair.id);
+                      router.replace(`/trade?pairId=${pair.id}`, { scroll: false });
+                    }}
+                    favoritePairIds={favoritePairIds}
+                    recentPairIds={recentPairIds}
+                    toggleFavoritePair={toggleFavoritePair}
+                    addRecentPair={addRecentPair}
+                  />
+                ) : (
+                  <span className="text-[11px] text-slate-500">{t("trade.selectPairInHeader")}</span>
+                )}
               </div>
-              {selectedPair && (
-                <div className="flex items-end gap-2 sm:gap-3 shrink-0">
-                  <div className="flex flex-col items-end min-w-0">
-                    <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500">
-                      {t("trade.currentPrice")}
-                    </span>
-                    <span className="text-base sm:text-lg xl:text-xl font-semibold text-accent font-mono tabular-nums truncate max-w-[120px] sm:max-w-none">
-                      {(() => {
-                        const v = Number(selectedPair.currentPrice);
-                        return Number.isNaN(v) ? "-" : v.toFixed(5);
-                      })()}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-            {/* График (линия/свечи) + таймфрейм: только на ПК; на мобильных — выпадающие кнопки на графике */}
-            <div className="hidden xl:flex items-center gap-2 overflow-x-auto pb-1 -mx-1 sm:mx-0 surface-scroll sm:flex-wrap">
-              <div className="flex items-center gap-1.5 shrink-0">
-                <span className="text-[10px] sm:text-[11px] uppercase tracking-wide text-slate-500 shrink-0 hidden sm:inline">
-                  {t("trade.chart")}
-                </span>
+              {/* Остальные кнопки в линию — 70% */}
+              <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto surface-scroll flex-wrap">
+                {/* Chart type */}
                 <div className="inline-flex rounded-full glass p-0.5 shrink-0">
                   <button
                     type="button"
-                    className={`chip min-h-[36px] px-3 text-[11px] xl:min-h-0 xl:px-2.5 xl:py-1 ${
-                      chartMode === "line"
-                        ? "chip-active"
-                        : ""
-                    }`}
+                    className={`chip min-h-[32px] px-2.5 text-[11px] py-1 ${chartMode === "line" ? "chip-active" : ""}`}
                     onClick={() => setChartSettings({ chartMode: "line" })}
                   >
                     {t("trade.line")}
                   </button>
                   <button
                     type="button"
-                    className={`chip min-h-[36px] px-3 text-[11px] xl:min-h-0 xl:px-2.5 xl:py-1 ${
-                      chartMode === "candles"
-                        ? "chip-active"
-                        : ""
-                    }`}
+                    className={`chip min-h-[32px] px-2.5 text-[11px] py-1 ${chartMode === "candles" ? "chip-active" : ""}`}
                     onClick={() => setChartSettings({ chartMode: "candles" })}
                   >
                     {t("trade.candles")}
                   </button>
                 </div>
-              </div>
-              <div className="flex items-center gap-1.5 shrink-0 border-l border-slate-700/50 pl-2">
-                <span className="text-[10px] sm:text-[11px] text-slate-500 shrink-0 hidden sm:inline">{t("trade.timeframe")}</span>
-                <div className="flex gap-1 shrink-0">
+                {/* Timeframe */}
+                <div className="flex items-center gap-1 shrink-0 border-l border-slate-700/50 pl-1.5">
                   {TIMEFRAMES.map((tf) => (
                     <button
                       key={tf}
                       type="button"
-                      className={`chip min-h-[36px] min-w-[36px] flex items-center justify-center text-[11px] shrink-0 xl:min-h-0 xl:min-w-0 xl:shrink ${
-                        timeframe === tf
-                          ? "chip-active"
-                          : ""
-                      }`}
+                      className={`chip min-h-[32px] min-w-[32px] flex items-center justify-center text-[10px] shrink-0 ${timeframe === tf ? "chip-active" : ""}`}
                       onClick={() => setChartSettings({ timeframe: tf })}
                     >
                       {tf === "30s" && "30с"}
@@ -647,161 +576,47 @@ function TradePageContent() {
                     </button>
                   ))}
                 </div>
-              </div>
-            </div>
-            <div className="hidden xl:flex items-center gap-1.5 overflow-x-auto pb-0.5 text-[11px] surface-scroll shrink-0">
-              <span className="text-slate-500 shrink-0">{t("trade.indicators")}</span>
-              {[
-                { key: "ma" as const, label: "MA", on: showMA, set: (v: boolean) => setChartSettings({ showMA: v }) },
-                { key: "rsi" as const, label: "RSI", on: showRSI, set: (v: boolean) => setChartSettings({ showRSI: v }) },
-                { key: "macd" as const, label: "MACD", on: showMACD, set: (v: boolean) => setChartSettings({ showMACD: v }) },
-                { key: "bb" as const, label: "BB", on: showBB, set: (v: boolean) => setChartSettings({ showBB: v }) }
-              ].map(({ label, on, set }) => (
-                <button
-                  key={label}
-                  type="button"
-                  className={`chip min-h-[34px] min-w-[34px] flex items-center justify-center shrink-0 xl:min-h-0 xl:min-w-0 ${
-                    on
-                      ? "chip-active"
-                      : ""
-                  }`}
-                  onClick={() => set(!on)}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {/* Мобильные: управление графиком в отдельной строке НАД графиком (без наложения на ось цены) */}
-              <div
-                ref={mobileMenuRef}
-                className="xl:hidden flex flex-wrap gap-2 pb-2"
-              >
-                {/* Тип графика */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setMobileChartMenu((m) => (m === "chart" ? null : "chart"))}
-                    className="flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation active:scale-[0.98]"
-                  >
-                    <span className="text-slate-400 text-xs">{t("trade.chart")}</span>
-                    <span>{chartMode === "line" ? t("trade.line") : t("trade.candles")}</span>
-                    <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {mobileChartMenu === "chart" && (
-                    <div className="absolute top-full left-0 mt-1 min-w-[140px] py-1 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 shadow-xl z-30">
-                      <button
-                        type="button"
-                        onClick={() => { setChartSettings({ chartMode: "line" }); setMobileChartMenu(null); }}
-                        className={`w-full text-left px-3 py-2.5 text-sm ${chartMode === "line" ? "text-emerald-400 font-medium" : "text-slate-300"}`}
-                      >
-                        {t("trade.line")}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setChartSettings({ chartMode: "candles" }); setMobileChartMenu(null); }}
-                        className={`w-full text-left px-3 py-2.5 text-sm ${chartMode === "candles" ? "text-emerald-400 font-medium" : "text-slate-300"}`}
-                      >
-                        {t("trade.candles")}
-                      </button>
-                    </div>
-                  )}
+                {/* Indicators */}
+                <div className="flex items-center gap-1 shrink-0 border-l border-slate-700/50 pl-1.5">
+                  {[
+                    { key: "ma" as const, label: "MA", on: showMA, set: (v: boolean) => setChartSettings({ showMA: v }) },
+                    { key: "rsi" as const, label: "RSI", on: showRSI, set: (v: boolean) => setChartSettings({ showRSI: v }) },
+                    { key: "macd" as const, label: "MACD", on: showMACD, set: (v: boolean) => setChartSettings({ showMACD: v }) },
+                    { key: "bb" as const, label: "BB", on: showBB, set: (v: boolean) => setChartSettings({ showBB: v }) }
+                  ].map(({ label, on, set }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className={`chip min-h-[32px] min-w-[32px] flex items-center justify-center text-[10px] shrink-0 ${on ? "chip-active" : ""}`}
+                      onClick={() => set(!on)}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
-                {/* Таймфрейм */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setMobileChartMenu((m) => (m === "timeframe" ? null : "timeframe"))}
-                    className="flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation active:scale-[0.98]"
-                  >
-                    <span className="text-slate-400 text-xs">{t("trade.timeframe")}</span>
-                    <span>
-                      {timeframe === "30s" && "30с"}
-                      {timeframe === "1m" && "1м"}
-                      {timeframe === "5m" && "5м"}
-                      {timeframe === "10m" && "10м"}
-                      {timeframe === "15m" && "15м"}
-                      {timeframe === "1h" && "1ч"}
-                      {timeframe === "2h" && "2ч"}
-                      {timeframe === "5h" && "5ч"}
+                {selectedPair && (
+                  <div className="ml-auto flex items-center gap-2 shrink-0 border-l border-slate-700/50 pl-1.5">
+                    <span className="text-[10px] text-slate-500">{t("trade.currentPrice")}</span>
+                    <span className="text-sm font-semibold text-accent font-mono">
+                      {Number.isNaN(Number(selectedPair.currentPrice)) ? "-" : Number(selectedPair.currentPrice).toFixed(5)}
                     </span>
-                    <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {mobileChartMenu === "timeframe" && (
-                    <div className="absolute top-full left-0 mt-1 min-w-[100px] py-1 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 shadow-xl z-30 max-h-[60vh] overflow-y-auto">
-                      {TIMEFRAMES.map((tf) => (
-                        <button
-                          key={tf}
-                          type="button"
-                          onClick={() => { setChartSettings({ timeframe: tf }); setMobileChartMenu(null); }}
-                          className={`w-full text-left px-3 py-2.5 text-sm ${timeframe === tf ? "text-emerald-400 font-medium" : "text-slate-300"}`}
-                        >
-                          {tf === "30s" && "30с"}
-                          {tf === "1m" && "1м"}
-                          {tf === "5m" && "5м"}
-                          {tf === "10m" && "10м"}
-                          {tf === "15m" && "15м"}
-                          {tf === "1h" && "1ч"}
-                          {tf === "2h" && "2ч"}
-                          {tf === "5h" && "5ч"}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {/* Fullscreen графика */}
+                  </div>
+                )}
+                {/* Fullscreen кнопка для мобильных */}
                 <button
                   type="button"
                   onClick={() => setChartFullscreen(true)}
-                  className="flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation active:scale-[0.98]"
+                  className="xl:hidden chip min-h-[32px] min-w-[32px] flex items-center justify-center shrink-0"
                   aria-label={t("trade.fullscreenChart")}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                   </svg>
                 </button>
-                {/* Индикаторы */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setMobileChartMenu((m) => (m === "indicators" ? null : "indicators"))}
-                    className="flex items-center gap-1.5 min-h-[44px] px-3 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 text-slate-200 text-sm font-medium shadow-lg touch-manipulation active:scale-[0.98]"
-                  >
-                    <span className="text-slate-400 text-xs">{t("trade.indicators")}</span>
-                    <span>
-                      {[showMA && "MA", showRSI && "RSI", showMACD && "MACD", showBB && "BB"].filter(Boolean).join(", ") || "—"}
-                    </span>
-                    <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {mobileChartMenu === "indicators" && (
-                    <div className="absolute top-full left-0 mt-1 min-w-[140px] py-1 rounded-xl bg-slate-800/95 backdrop-blur-md border border-slate-600/60 shadow-xl z-30">
-                      {[
-                        { key: "ma" as const, label: "MA", on: showMA, set: (v: boolean) => setChartSettings({ showMA: v }) },
-                        { key: "rsi" as const, label: "RSI", on: showRSI, set: (v: boolean) => setChartSettings({ showRSI: v }) },
-                        { key: "macd" as const, label: "MACD", on: showMACD, set: (v: boolean) => setChartSettings({ showMACD: v }) },
-                        { key: "bb" as const, label: "BB", on: showBB, set: (v: boolean) => setChartSettings({ showBB: v }) }
-                      ].map(({ label, on, set }) => (
-                        <button
-                          key={label}
-                          type="button"
-                          onClick={() => { set(!on); }}
-                          className={`w-full text-left px-3 py-2.5 text-sm flex items-center justify-between ${on ? "text-emerald-400 font-medium" : "text-slate-300"}`}
-                        >
-                          {label}
-                          {on && <span className="text-emerald-400">✓</span>}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </div>
-              {/* Область графика: на мобильных — отступ снизу под панель ордера */}
-              <div className={"mt-1 xl:mt-2 min-h-[200px] sm:min-h-[260px] xl:min-h-[380px] flex-1 w-full min-w-0 overflow-x-auto overflow-y-hidden xl:overflow-hidden flex flex-col relative surface-scroll transition-[padding-bottom] duration-300 " + chartAreaPadding}>
+            </div>
+            {/* Область графика — сразу после строки контролов */}
+              <div className={"mt-2 min-h-[200px] sm:min-h-[260px] xl:min-h-[380px] flex-1 w-full min-w-0 overflow-x-auto overflow-y-hidden xl:overflow-hidden flex flex-col relative surface-scroll transition-[padding-bottom] duration-300 " + chartAreaPadding}>
               <div className="min-w-[min(100%,800px)] xl:min-w-0 h-full flex flex-col">
               <PriceChart
                 candles={candles}
@@ -825,7 +640,7 @@ function TradePageContent() {
               </div>
             </div>
 
-          {/* Правая часть. Ордер сверху, активные сделки внизу (сворачиваемый блок) */}
+          {/* Правая часть. Ордер привязан к низу, всегда виден; активные сделки сверху (сворачиваемый) */}
           <div
             ref={orderSheetRef}
             className="flex flex-col gap-3 xl:gap-5 min-h-0 max-h-[85vh] xl:max-h-none animate-fade-in-up stagger-2 opacity-0 absolute bottom-0 left-0 right-0 z-10 xl:static xl:z-0 overflow-y-auto overflow-x-hidden xl:overflow-visible surface-scroll"
