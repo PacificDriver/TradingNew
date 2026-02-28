@@ -484,9 +484,10 @@ function TradePageContent() {
     });
   }
 
+  /* Нижний отступ для графика — new order фиксирован внизу, не перекрывает график */
   const chartAreaPadding = mobileOrderCollapsed
     ? "pb-[calc(110px+env(safe-area-inset-bottom,0px))] xl:pb-0"
-    : "pb-[calc(200px+env(safe-area-inset-bottom,0px))] xl:pb-0";
+    : "pb-[calc(170px+env(safe-area-inset-bottom,0px))] xl:pb-0";
 
   const content = (
     <>
@@ -557,16 +558,15 @@ function TradePageContent() {
                 ref={dropdownRef}
                 className="flex-1 min-w-0 flex items-center gap-2 overflow-visible"
               >
-                {/* 1. Chart type */}
+                {/* 1. Chart */}
                 <div className="relative shrink-0">
                   <button
                     type="button"
                     onClick={() => setOpenDropdown((d) => (d === "chart" ? null : "chart"))}
-                    className="chip min-h-[34px] px-3 text-[11px] py-1.5 flex items-center gap-1.5 touch-manipulation"
+                    className="chip min-h-[34px] px-2.5 text-[11px] py-1.5 flex items-center gap-1 touch-manipulation"
                   >
-                    <span className="text-slate-500 text-[10px]">{t("trade.chart")}</span>
                     <span>{chartMode === "line" ? t("trade.line") : t("trade.candles")}</span>
-                    <svg className={`w-3.5 h-3.5 text-slate-500 transition-transform ${openDropdown === "chart" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${openDropdown === "chart" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </button>
@@ -594,9 +594,8 @@ function TradePageContent() {
                   <button
                     type="button"
                     onClick={() => setOpenDropdown((d) => (d === "timeframe" ? null : "timeframe"))}
-                    className="chip min-h-[34px] px-3 text-[11px] py-1.5 flex items-center gap-1.5 touch-manipulation"
+                    className="chip min-h-[34px] px-2.5 text-[11px] py-1.5 flex items-center gap-1 touch-manipulation"
                   >
-                    <span className="text-slate-500 text-[10px]">{t("trade.timeframe")}</span>
                     <span>
                       {timeframe === "30s" && "30с"}
                       {timeframe === "1m" && "1м"}
@@ -638,9 +637,8 @@ function TradePageContent() {
                   <button
                     type="button"
                     onClick={() => setOpenDropdown((d) => (d === "indicators" ? null : "indicators"))}
-                    className="chip min-h-[34px] px-3 text-[11px] py-1.5 flex items-center gap-1.5 touch-manipulation"
+                    className="chip min-h-[34px] px-2.5 text-[11px] py-1.5 flex items-center gap-1 touch-manipulation"
                   >
-                    <span className="text-slate-500 text-[10px]">{t("trade.indicators")}</span>
                     <span>{[showMA && "MA", showRSI && "RSI", showMACD && "MACD", showBB && "BB"].filter(Boolean).join(", ") || "—"}</span>
                     <svg className={`w-3.5 h-3.5 text-slate-500 transition-transform ${openDropdown === "indicators" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -715,9 +713,8 @@ function TradePageContent() {
           {/* Правая часть. На мобильных: fixed внизу с safe-area; на ПК — обычная колонка */}
           <div
             ref={orderSheetRef}
-            className="flex flex-col gap-3 xl:gap-5 min-h-0 xl:max-h-none animate-fade-in-up stagger-2 opacity-0 fixed xl:static bottom-0 left-0 right-0 z-20 xl:z-0 xl:bottom-auto xl:left-auto xl:right-auto max-h-[85vh] xl:max-h-none overflow-y-auto overflow-x-hidden xl:overflow-visible overscroll-contain"
+            className="flex flex-col-reverse xl:flex-col gap-0 xl:gap-5 min-h-0 xl:max-h-none animate-fade-in-up stagger-2 opacity-0 fixed xl:static bottom-0 left-0 right-0 z-20 xl:z-0 xl:bottom-auto xl:left-auto xl:right-auto max-h-[85vh] xl:max-h-none overflow-hidden xl:overflow-visible overscroll-contain"
             style={{
-              WebkitOverflowScrolling: "touch",
               paddingBottom: "env(safe-area-inset-bottom, 0px)"
             }}
           >
@@ -726,35 +723,18 @@ function TradePageContent() {
               className="flex flex-col gap-2 xl:gap-5 shrink-0 rounded-t-2xl xl:rounded-2xl p-3 sm:p-4 xl:p-6 transition-shadow duration-300 xl:hover:shadow-soft-glow/20 bg-slate-900/97 backdrop-blur-md border border-slate-700/50 border-t border-slate-600/40 xl:border-t xl:border-b-0 xl:bg-transparent xl:backdrop-blur-none xl:border xl:border-slate-700/50 xl:glass shadow-[0_-4px_24px_rgba(0,0,0,0.3)] xl:shadow-none touch-manipulation"
               style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
             >
-              {/* Мобильные: ручка для сворачивания — увеличенная зона нажатия для touch */}
+              {/* Мобильные: ручка для сворачивания */}
               <button
                 type="button"
                 onClick={() => setMobileOrderCollapsed((c) => !c)}
                 onTouchEnd={(e) => e.currentTarget.blur()}
-                className="xl:hidden flex items-center justify-center py-3 -mt-1 -mx-2 touch-manipulation active:bg-slate-800/50 rounded-t-2xl transition-colors min-h-[44px]"
+                className="xl:hidden flex items-center justify-center py-2 -mt-1 -mx-2 touch-manipulation active:bg-slate-800/50 rounded-t-2xl transition-colors min-h-[36px]"
                 aria-label={mobileOrderCollapsed ? t("trade.expandOrder") : t("trade.collapseOrder")}
               >
-                <div className="w-10 h-1 rounded-full bg-slate-600" />
+                <div className="w-8 h-0.5 rounded-full bg-slate-600" />
               </button>
-              {/* Заголовок и баланс: скрыты когда свёрнуто (мобильные) */}
-              <div className={"flex flex-wrap items-center justify-between gap-2 xl:gap-3 pb-1 xl:pb-3 " + (mobileOrderCollapsed ? "hidden xl:flex" : "")}>
-                <div className="min-w-0 flex items-center gap-2 flex-1">
-                  <h3 className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 xl:text-xs xl:text-slate-400 shrink-0">
-                    {t("trade.newOrder")}
-                  </h3>
-                  <p className="text-xs xl:text-sm font-medium text-slate-200 truncate min-w-0">
-                    {selectedPair ? selectedPair.name : t("trade.selectAsset")}
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-[10px] uppercase tracking-wider text-slate-500">{t("trade.balance")}</p>
-                  <p className="text-sm sm:text-base font-semibold text-accent font-mono tabular-nums truncate">
-                    ${formatBalance(user?.demoBalance)}
-                  </p>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-1 gap-2 xl:gap-3">
                 {/* Строка: сумма + время — в одну линию на всех экранах */}
                 {!mobileOrderCollapsed && (
                 <div className="flex flex-row gap-2 sm:gap-3 w-full">
@@ -829,8 +809,8 @@ function TradePageContent() {
                 )}
               </div>
             </div>
-            {/* Активные сделки — внизу, ультра компактный сворачиваемый блок */}
-            <div className="shrink-0">
+            {/* Активные сделки — выше ордера, прокручиваются если много; ордер всегда внизу */}
+            <div className="flex-1 min-h-0 overflow-y-auto xl:overflow-visible overscroll-contain xl:flex-none">
               <ActiveTrades />
             </div>
           </div>
