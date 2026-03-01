@@ -655,6 +655,8 @@ function TradePageContent() {
                       {chartMode === "line" && t("trade.line")}
                       {chartMode === "candles" && t("trade.candles")}
                       {chartMode === "baseline" && t("trade.baseline")}
+                      {chartMode === "heikin_ashi" && t("trade.heikinAshi")}
+                      {chartMode === "bars" && t("trade.bars")}
                     </span>
                     <svg className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${openDropdown === "chart" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -682,6 +684,20 @@ function TradePageContent() {
                         className={`w-full text-left px-3 py-2 text-[11px] ${chartMode === "baseline" ? "text-emerald-400 font-medium" : "text-slate-300"}`}
                       >
                         {t("trade.baseline")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setChartSettings({ chartMode: "heikin_ashi" }); setOpenDropdown(null); }}
+                        className={`w-full text-left px-3 py-2 text-[11px] ${chartMode === "heikin_ashi" ? "text-emerald-400 font-medium" : "text-slate-300"}`}
+                      >
+                        {t("trade.heikinAshi")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setChartSettings({ chartMode: "bars" }); setOpenDropdown(null); }}
+                        className={`w-full text-left px-3 py-2 text-[11px] ${chartMode === "bars" ? "text-emerald-400 font-medium" : "text-slate-300"}`}
+                      >
+                        {t("trade.bars")}
                       </button>
                     </div>
                   )}

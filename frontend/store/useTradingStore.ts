@@ -57,7 +57,7 @@ export type SettledResult = { status: "WIN" | "LOSS"; tradeId: number };
 export type ChartSettings = {
   selectedPairId: number | null;
   timeframe: string;
-  chartMode: "line" | "candles" | "baseline";
+  chartMode: "line" | "candles" | "baseline" | "heikin_ashi" | "bars";
   showMA: boolean;
   showRSI: boolean;
   showMACD: boolean;

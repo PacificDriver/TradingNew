@@ -7,6 +7,7 @@ import {
   LastPriceAnimationMode,
   createChart,
   CandlestickSeries,
+  BarSeries,
   LineSeries,
   AreaSeries,
   BaselineSeries,
@@ -48,7 +49,7 @@ type EntryMarker = {
   isLatest?: boolean;
 };
 
-type ChartMode = "line" | "candles" | "baseline";
+type ChartMode = "line" | "candles" | "baseline" | "heikin_ashi" | "bars";
 
 type Props = {
   candles: CandlePoint[];
@@ -124,7 +125,7 @@ function PriceChartInner({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Line"> | ISeriesApi<"Area"> | ISeriesApi<"Baseline"> | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Bar"> | ISeriesApi<"Line"> | ISeriesApi<"Area"> | ISeriesApi<"Baseline"> | null>(null);
   const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const priceLinesRef = useRef<ReturnType<ISeriesApi<"Line">["createPriceLine"]>[]>([]);
   const shouldFitOnNextDataRef = useRef(true);
@@ -165,6 +166,35 @@ function PriceChartInner({
         close: Number(c.close)
       }));
   }, [candles]);
+
+  /** Heikin Ashi: сглаженные свечи (HA_Close, HA_Open, HA_High, HA_Low) */
+  const heikinAshiCandles = useMemo((): CandlestickData[] => {
+    if (normalizedCandles.length === 0) return [];
+    const out: CandlestickData[] = [];
+    let prevHAOpen = (normalizedCandles[0].open + normalizedCandles[0].close) / 2;
+    let prevHAClose = (normalizedCandles[0].open + normalizedCandles[0].high + normalizedCandles[0].low + normalizedCandles[0].close) / 4;
+    for (let i = 0; i < normalizedCandles.length; i++) {
+      const c = normalizedCandles[i];
+      const o = Number(c.open);
+      const h = Number(c.high);
+      const l = Number(c.low);
+      const cl = Number(c.close);
+      const haClose = (o + h + l + cl) / 4;
+      const haOpen = i === 0 ? (o + cl) / 2 : (prevHAOpen + prevHAClose) / 2;
+      const haHigh = Math.max(h, haOpen, haClose);
+      const haLow = Math.min(l, haOpen, haClose);
+      out.push({
+        time: c.time,
+        open: haOpen,
+        high: haHigh,
+        low: haLow,
+        close: haClose
+      });
+      prevHAOpen = haOpen;
+      prevHAClose = haClose;
+    }
+    return out;
+  }, [normalizedCandles]);
 
   const chartMarkers = useMemo(
     () =>
@@ -245,14 +275,20 @@ function PriceChartInner({
     const series = seriesRef.current;
     if (!chart || !series || !normalizedCandles.length) return;
 
-    if (mode === "candles") {
-      (series as ISeriesApi<"Candlestick">).setData(normalizedCandles);
+    if (mode === "candles" || mode === "heikin_ashi") {
+      const data = mode === "heikin_ashi" ? heikinAshiCandles : normalizedCandles;
+      (series as ISeriesApi<"Candlestick">).setData(data);
+    } else if (mode === "bars") {
+      (series as ISeriesApi<"Bar">).setData(normalizedCandles);
     } else {
       const lineData = normalizedCandles.map((c) => ({ time: c.time, value: c.close }));
       (series as ISeriesApi<"Line"> | ISeriesApi<"Area"> | ISeriesApi<"Baseline">).setData(lineData);
     }
 
-    const latestClose = Number(normalizedCandles[normalizedCandles.length - 1].close);
+    const latestClose =
+      mode === "heikin_ashi" && heikinAshiCandles.length > 0
+        ? Number(heikinAshiCandles[heikinAshiCandles.length - 1].close)
+        : Number(normalizedCandles[normalizedCandles.length - 1].close);
     applyPriceLines(latestClose);
     markersPluginRef.current?.setMarkers(chartMarkers);
 
@@ -472,7 +508,7 @@ function PriceChartInner({
       });
     }
 
-    if (mode === "candles") {
+    if (mode === "candles" || mode === "heikin_ashi") {
       const series = chart.addSeries(CandlestickSeries, {
         upColor: "#0ECB81",
         downColor: "#F6465D",
@@ -482,6 +518,14 @@ function PriceChartInner({
         borderDownColor: "#F6465D"
       }, 0);
       seriesRef.current = series as ISeriesApi<"Candlestick">;
+      markersPluginRef.current = createSeriesMarkers(series, []);
+    } else if (mode === "bars") {
+      const series = chart.addSeries(BarSeries, {
+        upColor: "#0ECB81",
+        downColor: "#F6465D",
+        openVisible: true
+      }, 0);
+      seriesRef.current = series as ISeriesApi<"Bar">;
       markersPluginRef.current = createSeriesMarkers(series, []);
     } else if (mode === "baseline") {
       // Baseline: выше базовой линии — зелёный, ниже — красный (удобно для LONG/SHORT)
@@ -535,7 +579,7 @@ function PriceChartInner({
 
   useEffect(() => {
     applyDataAndAnnotations();
-  }, [normalizedCandles, chartMarkers, mode]);
+  }, [normalizedCandles, heikinAshiCandles, chartMarkers, mode]);
 
   const overlay = loading ? (
     <div
