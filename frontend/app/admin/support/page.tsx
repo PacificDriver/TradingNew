@@ -76,6 +76,8 @@ export default function AdminSupportPage() {
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [filterOnlineOnly, setFilterOnlineOnly] = useState(false);
+  const [onlineUserIds, setOnlineUserIds] = useState<number[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
   const prevLastMessageByThreadRef = useRef<Map<number, string>>(new Map());
   const initialLoadRef = useRef(true);
@@ -148,6 +150,22 @@ export default function AdminSupportPage() {
     const t = setInterval(fetchThreads, POLL_INTERVAL_MS);
     return () => clearInterval(t);
   }, [token, user?.isAdmin]);
+
+  useEffect(() => {
+    if (!token || !user?.isAdmin) return;
+    const fetchOnline = () => {
+      apiFetch<{ onlineUserIds: number[] }>("/admin/users-online", { headers: authHeaders(token) })
+        .then((data) => setOnlineUserIds(data.onlineUserIds ?? []))
+        .catch(() => setOnlineUserIds([]));
+    };
+    fetchOnline();
+    const id = setInterval(fetchOnline, 15_000);
+    return () => clearInterval(id);
+  }, [token, user?.isAdmin]);
+
+  const filteredThreads = filterOnlineOnly
+    ? threads.filter((t) => onlineUserIds.includes(t.userId))
+    : threads;
 
   useEffect(() => {
     if (selectedId == null || !token) {
@@ -269,15 +287,30 @@ export default function AdminSupportPage() {
               </Link>
             </div>
           </div>
-          <p className="text-sm text-slate-500 mb-4">{t("admin.supportChats")}</p>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <p className="text-sm text-slate-500">{t("admin.supportChats")}</p>
+            <label className="flex items-center gap-2 cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={filterOnlineOnly}
+                onChange={(e) => setFilterOnlineOnly(e.target.checked)}
+                className="rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500/50"
+              />
+              <span className="text-xs text-slate-400">{t("admin.filterOnlineOnly")}</span>
+            </label>
+          </div>
           <div className="glass-panel overflow-hidden rounded-xl">
             {loadingThreads ? (
               <div className="p-4 text-slate-500 text-sm">{t("admin.supportLoading")}</div>
-            ) : threads.length === 0 ? (
-              <div className="p-4 text-slate-500 text-sm">{t("admin.noTickets")}</div>
+            ) : filteredThreads.length === 0 ? (
+              <div className="p-4 text-slate-500 text-sm">
+                {filterOnlineOnly && threads.length > 0
+                  ? t("admin.noOnlineUsers")
+                  : t("admin.noTickets")}
+              </div>
             ) : (
               <ul className="divide-y divide-slate-800/50">
-                {threads.map((t) => (
+                {filteredThreads.map((t) => (
                   <li key={t.id}>
                     <button
                       type="button"
