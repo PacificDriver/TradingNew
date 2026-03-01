@@ -62,6 +62,9 @@ model User {
   blockedAt          DateTime?  // полная блокировка: торги и вывод запрещены
   withdrawBlockedAt  DateTime?  // частичная: вывод запрещён, торги разрешены
   blockReason        String?
+  socialClickInstagram Boolean @default(false)
+  socialClickTelegram  Boolean @default(false)
+  socialBonusClaimedAt  DateTime?  // бонус $100 за клики по соцсетям — начислен 1 раз
   trades               Trade[]
   sessions             Session[]
   supportThread        SupportThread?

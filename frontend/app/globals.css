@@ -261,6 +261,53 @@ body {
   animation: chart-result-in 0.35s ease-out forwards;
 }
 
+.animate-result-ripple {
+  animation: result-ripple 0.6s ease-out forwards;
+}
+
+@keyframes result-ripple {
+  0% {
+    transform: scale(0.3);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+.animate-win-pulse {
+  animation: win-pulse 0.8s ease-out;
+}
+
+.animate-loss-pulse {
+  animation: loss-pulse 0.8s ease-out;
+}
+
+@keyframes win-pulse {
+  0% {
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0.2;
+  }
+}
+
+@keyframes loss-pulse {
+  0% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 0.15;
+  }
+}
+
 /* --- Фон: кольца градиентов, видимое взаимодействие со стеклом + оптимизация --- */
 .gradient-bg-layer {
   position: fixed;

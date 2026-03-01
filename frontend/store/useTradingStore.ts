@@ -3,6 +3,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export type SocialBonusState = {
+  instagramClicked: boolean;
+  telegramClicked: boolean;
+  bonusClaimed: boolean;
+};
+
 type User = {
   id: number;
   email: string;
@@ -13,6 +19,8 @@ type User = {
   /** Частичная блокировка: вывод запрещён */
   withdrawBlockedAt?: string | null;
   blockReason?: string | null;
+  /** Бонус $100 за клики по соцсетям */
+  socialBonus?: SocialBonusState;
 };
 
 type TradingPair = {
@@ -49,7 +57,7 @@ export type SettledResult = { status: "WIN" | "LOSS"; tradeId: number };
 export type ChartSettings = {
   selectedPairId: number | null;
   timeframe: string;
-  chartMode: "line" | "candles";
+  chartMode: "line" | "candles" | "baseline";
   showMA: boolean;
   showRSI: boolean;
   showMACD: boolean;

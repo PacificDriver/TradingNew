@@ -9,6 +9,7 @@ import {
   CandlestickSeries,
   LineSeries,
   AreaSeries,
+  BaselineSeries,
   HistogramSeries,
   createSeriesMarkers,
   type IChartApi,
@@ -47,7 +48,7 @@ type EntryMarker = {
   isLatest?: boolean;
 };
 
-type ChartMode = "line" | "candles";
+type ChartMode = "line" | "candles" | "baseline";
 
 type Props = {
   candles: CandlePoint[];
@@ -123,7 +124,7 @@ function PriceChartInner({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Line"> | ISeriesApi<"Area"> | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Candlestick"> | ISeriesApi<"Line"> | ISeriesApi<"Area"> | ISeriesApi<"Baseline"> | null>(null);
   const markersPluginRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const priceLinesRef = useRef<ReturnType<ISeriesApi<"Line">["createPriceLine"]>[]>([]);
   const shouldFitOnNextDataRef = useRef(true);
@@ -247,9 +248,8 @@ function PriceChartInner({
     if (mode === "candles") {
       (series as ISeriesApi<"Candlestick">).setData(normalizedCandles);
     } else {
-      (series as ISeriesApi<"Line"> | ISeriesApi<"Area">).setData(
-        normalizedCandles.map((c) => ({ time: c.time, value: c.close }))
-      );
+      const lineData = normalizedCandles.map((c) => ({ time: c.time, value: c.close }));
+      (series as ISeriesApi<"Line"> | ISeriesApi<"Area"> | ISeriesApi<"Baseline">).setData(lineData);
     }
 
     const latestClose = Number(normalizedCandles[normalizedCandles.length - 1].close);
@@ -482,6 +482,29 @@ function PriceChartInner({
         borderDownColor: "#F6465D"
       }, 0);
       seriesRef.current = series as ISeriesApi<"Candlestick">;
+      markersPluginRef.current = createSeriesMarkers(series, []);
+    } else if (mode === "baseline") {
+      // Baseline: выше базовой линии — зелёный, ниже — красный (удобно для LONG/SHORT)
+      const firstClose = normalizedCandles.length > 0 ? Number(normalizedCandles[0].close) : 0;
+      const series = chart.addSeries(BaselineSeries, {
+        baseValue: { type: "price", price: firstClose },
+        topLineColor: "#0ECB81",
+        bottomLineColor: "#F6465D",
+        topFillColor1: "rgba(14, 203, 129, 0.28)",
+        topFillColor2: "rgba(14, 203, 129, 0.05)",
+        bottomFillColor1: "rgba(246, 70, 93, 0.05)",
+        bottomFillColor2: "rgba(246, 70, 93, 0.28)",
+        lineWidth: 3,
+        crosshairMarkerVisible: true,
+        crosshairMarkerRadius: 5,
+        crosshairMarkerBorderWidth: 2,
+        crosshairMarkerBorderColor: "#94a3b8",
+        crosshairMarkerBackgroundColor: "#0f172a",
+        lastValueVisible: true,
+        priceLineVisible: true,
+        lastPriceAnimation: LastPriceAnimationMode.Continuous
+      }, 0);
+      seriesRef.current = series as ISeriesApi<"Baseline">;
       markersPluginRef.current = createSeriesMarkers(series, []);
     } else {
       // Area series: линия + заливка области под ней по мере продвижения

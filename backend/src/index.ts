@@ -1537,16 +1537,124 @@ app.get("/me", authMiddlewareWithSession, async (req: AuthRequest, res) => {
       totpEnabled: true,
       blockedAt: true,
       withdrawBlockedAt: true,
-      blockReason: true
+      blockReason: true,
+      socialClickInstagram: true,
+      socialClickTelegram: true,
+      socialBonusClaimedAt: true
     }
   });
   if (!user) return res.status(401).json({ message: "User not found" });
+  const socialBonus = {
+    instagramClicked: user.socialClickInstagram,
+    telegramClicked: user.socialClickTelegram,
+    bonusClaimed: user.socialBonusClaimedAt != null
+  };
   return res.json({
     user: {
-      ...user,
+      id: user.id,
+      email: user.email,
+      demoBalance: user.demoBalance,
+      isAdmin: user.isAdmin,
+      createdAt: user.createdAt,
+      referralCode: user.referralCode,
+      referralBalance: user.referralBalance,
+      totpEnabled: user.totpEnabled,
       blockedAt: user.blockedAt?.toISOString() ?? null,
-      withdrawBlockedAt: user.withdrawBlockedAt?.toISOString() ?? null
+      withdrawBlockedAt: user.withdrawBlockedAt?.toISOString() ?? null,
+      blockReason: user.blockReason,
+      socialBonus
     }
+  });
+});
+
+const SOCIAL_BONUS_AMOUNT = 100;
+
+// --- Бонус за клики по соцсетям: начисление ровно 1 раз после клика по всем ---
+app.post("/bonus/social-click", authMiddleware, async (req: AuthRequest, res) => {
+  const body = req.body as { platform?: string };
+  const platform = typeof body.platform === "string" ? body.platform.toLowerCase() : "";
+  if (platform !== "instagram" && platform !== "telegram") {
+    return res.status(400).json({ message: "platform must be 'instagram' or 'telegram'" });
+  }
+  const user = await prisma.user.findUnique({
+    where: { id: req.userId },
+    select: {
+      id: true,
+      demoBalance: true,
+      blockedAt: true,
+      socialClickInstagram: true,
+      socialClickTelegram: true,
+      socialBonusClaimedAt: true
+    }
+  });
+  if (!user) return res.status(401).json({ message: "User not found" });
+
+  const updates: { socialClickInstagram?: boolean; socialClickTelegram?: boolean; socialBonusClaimedAt?: Date } = {};
+  if (platform === "instagram" && !user.socialClickInstagram) updates.socialClickInstagram = true;
+  if (platform === "telegram" && !user.socialClickTelegram) updates.socialClickTelegram = true;
+
+  let credited = false;
+  let newBalance = Number(user.demoBalance);
+
+  if (Object.keys(updates).length > 0) {
+    const bothClicked = (user.socialClickInstagram || updates.socialClickInstagram) && (user.socialClickTelegram || updates.socialClickTelegram);
+    const canClaim = bothClicked && !user.socialBonusClaimedAt && !user.blockedAt;
+
+    if (canClaim) {
+      updates.socialBonusClaimedAt = new Date();
+      const result = await prisma.$transaction(async (tx) => {
+        const updated = await (tx as PrismaClient).user.update({
+          where: { id: user.id },
+          data: {
+            ...updates,
+            demoBalance: { increment: SOCIAL_BONUS_AMOUNT }
+          },
+          select: { demoBalance: true }
+        });
+        const balanceBefore = Number(user.demoBalance);
+        const balanceAfter = Number(updated.demoBalance);
+        await createBalanceAudit(tx, {
+          userId: user.id,
+          type: "social_bonus",
+          amount: SOCIAL_BONUS_AMOUNT,
+          balanceBefore,
+          balanceAfter,
+          refType: "bonus",
+          refId: "social"
+        });
+        return { demoBalance: updated.demoBalance };
+      });
+      newBalance = Number(result.demoBalance);
+      credited = true;
+      notifyBalanceChange(prisma, {
+        userId: user.id,
+        type: "social_bonus",
+        amount: SOCIAL_BONUS_AMOUNT,
+        balanceBefore: Number(user.demoBalance),
+        balanceAfter: newBalance,
+        refType: "bonus",
+        refId: "social"
+      }).catch(() => {});
+    } else {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: updates
+      });
+    }
+  } else {
+    newBalance = Number(user.demoBalance);
+  }
+
+  const updatedUser = await prisma.user.findUnique({
+    where: { id: req.userId },
+    select: { socialClickInstagram: true, socialClickTelegram: true, socialBonusClaimedAt: true }
+  });
+  return res.json({
+    instagramClicked: updatedUser?.socialClickInstagram ?? user.socialClickInstagram,
+    telegramClicked: updatedUser?.socialClickTelegram ?? user.socialClickTelegram,
+    bonusClaimed: (updatedUser?.socialBonusClaimedAt ?? user.socialBonusClaimedAt) != null,
+    credited,
+    demoBalance: newBalance
   });
 });
 

@@ -14,7 +14,9 @@ import {
 import { SettledResultOverlay } from "../../components/SettledResultOverlay";
 import { ChartResultFeedback } from "../../components/ChartResultFeedback";
 import { CompletedTrades } from "../../components/CompletedTrades";
+import { WelcomeModal } from "../../components/WelcomeModal";
 import { PairSelectDropdown } from "../../components/PairSelectDropdown";
+import { SocialLink } from "../../components/SocialLink";
 import { apiFetch, authHeaders, isAuthError, getDisplayMessage } from "../../lib/api";
 import { useLocale } from "../../lib/i18n";
 
@@ -51,6 +53,7 @@ type MeResponse = {
     blockedAt?: string | null;
     withdrawBlockedAt?: string | null;
     blockReason?: string | null;
+    socialBonus?: { instagramClicked: boolean; telegramClicked: boolean; bonusClaimed: boolean };
   };
 };
 
@@ -123,6 +126,11 @@ function TradePageContent() {
   const [chartFullscreen, setChartFullscreen] = useState(false);
   /** Открытый выпадающий список в 70% зоне */
   const [openDropdown, setOpenDropdown] = useState<"chart" | "timeframe" | "indicators" | null>(null);
+  /** Модалка приветствия (показывается при первом визите, если не скрыта) */
+  const [welcomeModalOpen, setWelcomeModalOpen] = useState(false);
+  const welcomeShownRef = useRef(false);
+  /** Сообщение о начислении бонуса за соцсети (показывается один раз после credited) */
+  const [socialBonusMessage, setSocialBonusMessage] = useState(false);
   const orderSheetRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const timeframeToMs: Record<TimeframeKey, number> = useMemo(
@@ -244,6 +252,18 @@ function TradePageContent() {
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
+  // Модалка приветствия — показать при первом визите, если не скрыта через «не показывать снова»
+  useEffect(() => {
+    if (!authChecked || welcomeShownRef.current) return;
+    try {
+      if (localStorage.getItem("auraretrade_welcome_hidden") === "true") return;
+      welcomeShownRef.current = true;
+      setWelcomeModalOpen(true);
+    } catch {
+      // ignore
+    }
+  }, [authChecked]);
+
   // Закрытие выпадающих списков по клику снаружи
   useEffect(() => {
     if (openDropdown == null) return;
@@ -254,6 +274,22 @@ function TradePageContent() {
     window.addEventListener("pointerdown", onPointerDown);
     return () => window.removeEventListener("pointerdown", onPointerDown);
   }, [openDropdown]);
+
+  // Резервный опрос активных сделок — завершённые сразу исчезают (даже если WebSocket запаздывает)
+  useEffect(() => {
+    if (!authChecked || !token) return;
+    const syncActive = async () => {
+      try {
+        const data = await apiFetch<TradesResponse>("/trades/active", { headers: authHeaders(token) });
+        setActiveTrades(data.trades ?? []);
+      } catch {
+        // ignore
+      }
+    };
+    syncActive();
+    const id = setInterval(syncActive, 5000);
+    return () => clearInterval(id);
+  }, [authChecked, token, setActiveTrades]);
 
   // Резервный опрос цен по API (если WebSocket не доставляет обновления — график всё равно обновляется)
   useEffect(() => {
@@ -490,6 +526,58 @@ function TradePageContent() {
 
   const content = (
     <>
+      <WelcomeModal
+        open={welcomeModalOpen}
+        onClose={(dontShowAgain) => {
+          if (dontShowAgain) {
+            try {
+              localStorage.setItem("auraretrade_welcome_hidden", "true");
+            } catch {
+              // ignore
+            }
+          }
+          setWelcomeModalOpen(false);
+        }}
+        title={t("trade.welcomeModalTitle")}
+        dontShowAgainLabel={t("trade.welcomeDontShowAgain")}
+        gotItLabel={t("trade.welcomeGotIt")}
+      >
+        <p className="mb-4">{t("trade.welcomeModalText")}</p>
+        {socialBonusMessage && (
+          <p className="mb-3 text-sm font-medium text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 rounded-lg px-3 py-2">
+            {t("trade.socialBonusCredited")}
+          </p>
+        )}
+        <p className="text-[11px] uppercase tracking-wider text-slate-500 mb-2">{t("trade.welcomeSocialTitle")}</p>
+        <div className="flex gap-3">
+          <SocialLink
+            href="https://www.instagram.com/auraretrade?igsh=Z253aTg4emw2NTl0"
+            platform="instagram"
+            token={token}
+            user={user}
+            setAuth={setAuth}
+            onCredited={() => setSocialBonusMessage(true)}
+            clicked={user?.socialBonus?.instagramClicked}
+            bonusClaimed={user?.socialBonus?.bonusClaimed}
+            label="Instagram"
+            iconPath="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0z"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/80 border border-slate-600/60 text-slate-200 hover:bg-slate-700/80 transition-colors text-sm"
+          />
+          <SocialLink
+            href="https://t.me/auraretrade"
+            platform="telegram"
+            token={token}
+            user={user}
+            setAuth={setAuth}
+            onCredited={() => setSocialBonusMessage(true)}
+            clicked={user?.socialBonus?.telegramClicked}
+            bonusClaimed={user?.socialBonus?.bonusClaimed}
+            label="Telegram"
+            iconPath="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.161c-.18 1.897-.962 6.502-1.359 8.627-.168.9-.5 1.201-.82 1.23-.697.064-1.226-.461-1.901-.903-1.056-.692-1.653-1.123-2.678-1.799-1.185-.781-.417-1.21.258-1.911.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.139-5.062 3.345-.479.33-.913.49-1.302.481-.428-.009-1.252-.241-1.865-.44-.752-.244-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.831-2.529 6.998-3.015 3.332-1.386 4.025-1.627 4.477-1.635.099-.002.321.023.465.141.121.1.154.234.17.33.015.095.034.313.019.482z"
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/80 border border-slate-600/60 text-slate-200 hover:bg-slate-700/80 transition-colors text-sm"
+          />
+        </div>
+      </WelcomeModal>
       <SettledResultOverlay />
       {/* Fullscreen график (мобильные) */}
       {chartFullscreen && (
@@ -563,7 +651,11 @@ function TradePageContent() {
                     onClick={() => setOpenDropdown((d) => (d === "chart" ? null : "chart"))}
                     className="chip min-h-[34px] px-2.5 text-[11px] py-1.5 flex items-center gap-1 touch-manipulation"
                   >
-                    <span>{chartMode === "line" ? t("trade.line") : t("trade.candles")}</span>
+                    <span>
+                      {chartMode === "line" && t("trade.line")}
+                      {chartMode === "candles" && t("trade.candles")}
+                      {chartMode === "baseline" && t("trade.baseline")}
+                    </span>
                     <svg className={`w-3.5 h-3.5 text-slate-500 shrink-0 transition-transform ${openDropdown === "chart" ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
@@ -583,6 +675,13 @@ function TradePageContent() {
                         className={`w-full text-left px-3 py-2 text-[11px] ${chartMode === "candles" ? "text-emerald-400 font-medium" : "text-slate-300"}`}
                       >
                         {t("trade.candles")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setChartSettings({ chartMode: "baseline" }); setOpenDropdown(null); }}
+                        className={`w-full text-left px-3 py-2 text-[11px] ${chartMode === "baseline" ? "text-emerald-400 font-medium" : "text-slate-300"}`}
+                      >
+                        {t("trade.baseline")}
                       </button>
                     </div>
                   )}
