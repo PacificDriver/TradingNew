@@ -85,6 +85,8 @@ type State = {
   authChecked: boolean;
   /** Открыть селектор пары (например из поиска в шапке на /trade) */
   openPairSelector: boolean;
+  /** Звук при выигрыше (по умолчанию включён, сохраняется) */
+  soundOnWin: boolean;
 };
 
 type Actions = {
@@ -105,6 +107,7 @@ type Actions = {
   setWsConnected: (v: boolean) => void;
   setAuthChecked: (v: boolean) => void;
   setOpenPairSelector: (v: boolean) => void;
+  setSoundOnWin: (v: boolean) => void;
 };
 
 export const useTradingStore = create<State & Actions>()(
@@ -132,6 +135,7 @@ export const useTradingStore = create<State & Actions>()(
       wsConnected: false,
       authChecked: false,
       openPairSelector: false,
+      soundOnWin: true,
 
       setAuth: (token, user) => set({ token, user }),
       clearAuth: () =>
@@ -250,7 +254,8 @@ export const useTradingStore = create<State & Actions>()(
       clearLastSettledResult: () => set({ lastSettledResult: null }),
       setWsConnected: (v) => set({ wsConnected: v }),
       setAuthChecked: (v) => set({ authChecked: v }),
-      setOpenPairSelector: (v) => set({ openPairSelector: v })
+      setOpenPairSelector: (v) => set({ openPairSelector: v }),
+      setSoundOnWin: (v) => set({ soundOnWin: v })
     }),
     {
       name: "trading-mvp-store",
@@ -260,7 +265,8 @@ export const useTradingStore = create<State & Actions>()(
         tradeHistory: state.tradeHistory,
         favoritePairIds: state.favoritePairIds,
         recentPairIds: state.recentPairIds,
-        chartSettings: state.chartSettings
+        chartSettings: state.chartSettings,
+        soundOnWin: state.soundOnWin
       })
     }
   )

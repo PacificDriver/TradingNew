@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { playWinSound } from "../lib/sounds";
 
 const SHOW_MS = 2200;
 const FADE_MS = 400;
@@ -8,12 +9,18 @@ const FADE_MS = 400;
 type Props = {
   status: "WIN" | "LOSS";
   onDone: () => void;
+  /** Воспроизвести звук при WIN (по умолчанию из настроек) */
+  soundOn?: boolean;
 };
 
-export function ChartResultFeedback({ status, onDone }: Props) {
+export function ChartResultFeedback({ status, onDone, soundOn = true }: Props) {
   const [leaving, setLeaving] = useState(false);
   const [phase, setPhase] = useState<"pop" | "glow" | "hold">("pop");
   const isWin = status === "WIN";
+
+  useEffect(() => {
+    if (isWin && soundOn) playWinSound();
+  }, [isWin, soundOn]);
 
   useEffect(() => {
     const t = setTimeout(() => setPhase("glow"), 350);

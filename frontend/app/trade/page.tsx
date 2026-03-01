@@ -91,6 +91,7 @@ function TradePageContent() {
   const applyTradeUpdate = useTradingStore((s) => s.applyTradeUpdate);
   const chartSettings = useTradingStore((s) => s.chartSettings);
   const setChartSettings = useTradingStore((s) => s.setChartSettings);
+  const soundOnWin = useTradingStore((s) => s.soundOnWin);
 
   const TIMEFRAMES = [
     "30s",
@@ -826,6 +827,7 @@ function TradePageContent() {
                 <ChartResultFeedback
                   status={lastSettledResult.status}
                   onDone={clearLastSettledResult}
+                  soundOn={soundOnWin}
                 />
               )}
               </div>

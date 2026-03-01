@@ -116,6 +116,8 @@ export default function ProfilePage() {
   const user = useTradingStore((s) => s.user);
   const setAuth = useTradingStore((s) => s.setAuth);
   const clearAuth = useTradingStore((s) => s.clearAuth);
+  const soundOnWin = useTradingStore((s) => s.soundOnWin);
+  const setSoundOnWin = useTradingStore((s) => s.setSoundOnWin);
   const activeTrades = useTradingStore((s) => s.activeTrades);
   const completedTrades = useTradingStore((s) => s.completedTrades);
   const tradeHistory = useTradingStore((s) => s.tradeHistory);
@@ -477,6 +479,19 @@ export default function ProfilePage() {
                         </div>
                       </div>
                     )}
+
+                    <div className="mt-6 glass-panel p-5">
+                      <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-3">{t("profile.soundTitle")}</h2>
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={soundOnWin}
+                          onChange={(e) => setSoundOnWin(e.target.checked)}
+                          className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500/50 focus:ring-offset-0"
+                        />
+                        <span className="text-sm text-slate-300 group-hover:text-slate-100">{t("profile.soundOnWin")}</span>
+                      </label>
+                    </div>
 
                     <div className="mt-6 glass-panel p-5">
                       <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-2">{t("profile.bonusTitle")}</h2>

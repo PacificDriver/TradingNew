@@ -37,6 +37,8 @@ export function AppHeader() {
 
   const pairs = useTradingStore((s) => s.pairs);
   const setPairs = useTradingStore((s) => s.setPairs);
+  const soundOnWin = useTradingStore((s) => s.soundOnWin);
+  const setSoundOnWin = useTradingStore((s) => s.setSoundOnWin);
 
   useEffect(() => {
     if (pairs.length > 0 || !token) return;
@@ -104,9 +106,29 @@ export function AppHeader() {
         <InvestButton />
       </div>
 
-      {/* Справа: язык + баланс + пополнение + аватар. ml-auto чтобы всегда справа, flex-nowrap чтобы не переносились */}
+      {/* Справа: язык + звук + баланс + пополнение + аватар. ml-auto чтобы всегда справа, flex-nowrap чтобы не переносились */}
       <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 shrink-0 flex-nowrap ml-auto">
         <LanguageSwitcher />
+        {user && (
+          <button
+            type="button"
+            onClick={() => setSoundOnWin(!soundOnWin)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-colors touch-manipulation shrink-0"
+            aria-label={soundOnWin ? t("header.soundOn") : t("header.soundOff")}
+            title={soundOnWin ? t("header.soundOn") : t("header.soundOff")}
+          >
+            {soundOnWin ? (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+              </svg>
+            )}
+          </button>
+        )}
         {user && (
           <>
             {/* Мобильный баланс: только сумма + иконка пополнения */}
