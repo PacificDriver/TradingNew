@@ -316,6 +316,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "admin.offline": "Офлайн",
     "admin.filterOnlineOnly": "Только онлайн",
     "admin.noOnlineUsers": "Нет пользователей онлайн",
+    "admin.tradesCount": "Сделок",
     "admin.status": "Статус",
     "admin.actions": "Действия",
     "admin.error": "Ошибка",
@@ -342,6 +343,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "support.notificationCloseAll": "Закрыть все",
     "support.notificationOpenChat": "Открыть чат →",
     "support.notificationClose": "Закрыть",
+    "support.fromSupport": "Поддержка",
   },
   en: {
     "header.trading": "Trading",
@@ -669,6 +671,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "support.notificationCloseAll": "Close all",
     "support.notificationOpenChat": "Open chat →",
     "support.notificationClose": "Close",
+    "support.fromSupport": "Support",
   },
   es: {
     "header.trading": "Trading",
@@ -970,6 +973,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "admin.offline": "Desconectado",
     "admin.filterOnlineOnly": "Solo en línea",
     "admin.noOnlineUsers": "No hay usuarios en línea",
+    "admin.tradesCount": "Operaciones",
     "admin.status": "Estado",
     "admin.actions": "Acciones",
     "admin.error": "Error",
@@ -996,6 +1000,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "support.notificationCloseAll": "Cerrar todo",
     "support.notificationOpenChat": "Abrir chat →",
     "support.notificationClose": "Cerrar",
+    "support.fromSupport": "Soporte",
   }
 };
 

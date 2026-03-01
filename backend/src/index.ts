@@ -2994,16 +2994,21 @@ app.get(
         createdAt: true,
         blockedAt: true,
         withdrawBlockedAt: true,
-        blockReason: true
+        blockReason: true,
+        _count: { select: { trades: true } }
       }
     });
     return res.json({
-      users: users.map((u) => ({
-        ...u,
-        demoBalance: Number(u.demoBalance),
-        blockedAt: u.blockedAt?.toISOString() ?? null,
-        withdrawBlockedAt: u.withdrawBlockedAt?.toISOString() ?? null
-      }))
+      users: users.map((u) => {
+        const { _count, ...rest } = u as typeof u & { _count?: { trades: number } };
+        return {
+          ...rest,
+          demoBalance: Number(u.demoBalance),
+          blockedAt: u.blockedAt?.toISOString() ?? null,
+          withdrawBlockedAt: u.withdrawBlockedAt?.toISOString() ?? null,
+          tradesCount: _count?.trades ?? 0
+        };
+      })
     });
   }
 );

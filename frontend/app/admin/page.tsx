@@ -17,6 +17,7 @@ type AdminUser = {
   blockedAt: string | null;
   withdrawBlockedAt: string | null;
   blockReason: string | null;
+  tradesCount?: number;
 };
 
 type TradingPairRow = {
@@ -427,6 +428,7 @@ export default function AdminPage() {
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">ID</th>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">Email</th>
                       <th className="px-4 py-3 text-center text-slate-500 font-medium w-16">{t("admin.online")}</th>
+                      <th className="px-4 py-3 text-right text-slate-500 font-medium">{t("admin.tradesCount")}</th>
                       <th className="px-4 py-3 text-right text-slate-500 font-medium">Баланс</th>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">{t("admin.status")}</th>
                       <th className="px-4 py-3 text-right text-slate-500 font-medium">{t("admin.actions")}</th>
@@ -446,6 +448,9 @@ export default function AdminPage() {
                           ) : (
                             <span className="inline-block h-2.5 w-2.5 rounded-full bg-slate-600" title={t("admin.offline")} />
                           )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono text-slate-400 text-xs">
+                          {u.tradesCount ?? 0}
                         </td>
                         <td className="px-4 py-3 text-right">
                           {balanceEditId === u.id ? (
