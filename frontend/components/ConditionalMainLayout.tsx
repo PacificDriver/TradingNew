@@ -5,6 +5,8 @@ import { AppHeader } from "./AppHeader";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { PageTransition } from "./PageTransition";
 import { DepositModalProvider } from "./DepositModal";
+import { WebSocketBridge } from "./WebSocketBridge";
+import { SupportNotificationToasts } from "./SupportNotificationToasts";
 import { useTradingStore } from "../store/useTradingStore";
 import { ReactNode } from "react";
 
@@ -30,6 +32,8 @@ export function ConditionalMainLayout({ children }: { children: ReactNode }) {
       </main>
       <MobileBottomNav />
       {isBlocked && <BlockedOverlay />}
+      <WebSocketBridge />
+      <SupportNotificationToasts />
     </DepositModalProvider>
   );
 }

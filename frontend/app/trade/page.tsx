@@ -4,7 +4,6 @@ import dynamic from "next/dynamic";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGuard } from "../../components/AuthGuard";
-import { WebSocketBridge } from "../../components/WebSocketBridge";
 import {
   useTradingStore,
   TradingPair,
@@ -491,7 +490,6 @@ function TradePageContent() {
 
   const content = (
     <>
-      <WebSocketBridge />
       <SettledResultOverlay />
       {/* Fullscreen график (мобильные) */}
       {chartFullscreen && (

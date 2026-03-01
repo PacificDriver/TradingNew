@@ -54,6 +54,8 @@ export default function AdminPage() {
   const [actingUserId, setActingUserId] = useState<number | null>(null);
   const [balanceEditId, setBalanceEditId] = useState<number | null>(null);
   const [balanceEditValue, setBalanceEditValue] = useState("");
+  const [onlineUserIds, setOnlineUserIds] = useState<number[]>([]);
+  const [filterOnlineOnly, setFilterOnlineOnly] = useState(false);
 
   // Pairs
   const [pairs, setPairs] = useState<TradingPairRow[]>([]);
@@ -101,6 +103,21 @@ export default function AdminPage() {
         .catch((e) => setUsersError((e as Error).message))
         .finally(() => setUsersLoading(false));
     }
+  }, [authChecked, user?.isAdmin, token, activeTab]);
+
+  // Polling онлайна пользователей (каждые 15 сек, без обновления страницы)
+  useEffect(() => {
+    if (!authChecked || !user?.isAdmin || !token || activeTab !== "users") return;
+    const fetchOnline = () => {
+      apiFetch<{ onlineUserIds: number[] }>("/admin/users-online", {
+        headers: authHeaders(token)
+      })
+        .then((data) => setOnlineUserIds(data.onlineUserIds ?? []))
+        .catch(() => setOnlineUserIds([]));
+    };
+    fetchOnline();
+    const id = setInterval(fetchOnline, 15_000);
+    return () => clearInterval(id);
   }, [authChecked, user?.isAdmin, token, activeTab]);
 
   useEffect(() => {
@@ -370,9 +387,23 @@ export default function AdminPage() {
 
         {activeTab === "users" && (
           <div className="card overflow-hidden">
-            <div className="border-b border-slate-700/60 px-4 sm:px-6 py-3">
-              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{t("admin.users")}</h2>
-              <p className="text-sm text-slate-400 mt-0.5">{t("admin.usersHint")}</p>
+            <div className="border-b border-slate-700/60 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{t("admin.users")}</h2>
+                <p className="text-sm text-slate-400 mt-0.5">{t("admin.usersHint")}</p>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer shrink-0">
+                <input
+                  type="checkbox"
+                  checked={filterOnlineOnly}
+                  onChange={(e) => setFilterOnlineOnly(e.target.checked)}
+                  className="rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500/50"
+                />
+                <span className="text-sm text-slate-300">{t("admin.filterOnlineOnly")}</span>
+                <span className="text-[11px] text-slate-500">
+                  ({onlineUserIds.length} {t("admin.online")})
+                </span>
+              </label>
             </div>
             {usersLoading ? (
               <div className="py-12 text-center text-slate-500 text-sm">{t("admin.loading")}</div>
@@ -380,23 +411,42 @@ export default function AdminPage() {
               <div className="py-8 px-4 text-center text-red-400 text-sm">{usersError}</div>
             ) : users.length === 0 ? (
               <div className="py-10 px-4 text-center text-slate-500 text-sm">{t("admin.noUsers")}</div>
-            ) : (
+            ) : (() => {
+              const filtered = filterOnlineOnly
+                ? users.filter((u) => onlineUserIds.includes(u.id))
+                : users;
+              return filtered.length === 0 ? (
+                <div className="py-10 px-4 text-center text-slate-500 text-sm">
+                  {t("admin.noOnlineUsers")}
+                </div>
+              ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[640px] text-sm">
                   <thead className="border-b border-slate-700/60">
                     <tr>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">ID</th>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">Email</th>
+                      <th className="px-4 py-3 text-center text-slate-500 font-medium w-16">{t("admin.online")}</th>
                       <th className="px-4 py-3 text-right text-slate-500 font-medium">Баланс</th>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">{t("admin.status")}</th>
                       <th className="px-4 py-3 text-right text-slate-500 font-medium">{t("admin.actions")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
-                    {users.map((u) => (
+                    {filtered.map((u) => (
                       <tr key={u.id} className="hover:bg-slate-800/30">
                         <td className="px-4 py-3 font-mono text-slate-400">{u.id}</td>
                         <td className="px-4 py-3 text-slate-200 truncate max-w-[200px]">{u.email}</td>
+                        <td className="px-4 py-3 text-center">
+                          {onlineUserIds.includes(u.id) ? (
+                            <span
+                              className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+                              title={t("admin.online")}
+                            />
+                          ) : (
+                            <span className="inline-block h-2.5 w-2.5 rounded-full bg-slate-600" title={t("admin.offline")} />
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right">
                           {balanceEditId === u.id ? (
                             <span className="inline-flex items-center gap-2">
@@ -502,7 +552,8 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               </div>
-            )}
+              );
+            })()}
           </div>
         )}
 

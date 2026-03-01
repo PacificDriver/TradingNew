@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AuthGuard } from "../../components/AuthGuard";
-import { WebSocketBridge } from "../../components/WebSocketBridge";
 import { useTradingStore, type TradingPair } from "../../store/useTradingStore";
 import { apiFetch, authHeaders } from "../../lib/api";
 import { useLocale } from "../../lib/i18n";
@@ -74,7 +73,6 @@ function PairsPageContent() {
 
   return (
     <div className="mx-auto max-w-4xl py-6 sm:py-8">
-      <WebSocketBridge />
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold text-slate-100 sm:text-2xl">

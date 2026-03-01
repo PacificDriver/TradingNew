@@ -952,25 +952,91 @@ async function loadCandlesFromDb(): Promise<void> {
   }
 }
 
-// --- WebSocket server for price & trade updates ---
+// --- WebSocket server for price & trade updates + presence (online users) ---
 type WsClient = {
   socket: WebSocket;
 };
+
+/** Онлайн-присутствие: userId -> { lastSeen, wsCount } */
+const presenceMap = new Map<number, { lastSeen: number; wsCount: number }>();
+/** ws -> userId для отписки при закрытии соединения */
+const wsToUserId = new Map<WebSocket, number>();
+
+const PRESENCE_STALE_MS = 90_000; // 90 сек без heartbeat = офлайн
+const PRESENCE_CLEANUP_INTERVAL_MS = 60_000; // проверка каждые 60 сек
+
+function updatePresence(userId: number) {
+  const now = Date.now();
+  const cur = presenceMap.get(userId);
+  if (cur) {
+    cur.lastSeen = now;
+  } else {
+    presenceMap.set(userId, { lastSeen: now, wsCount: 0 });
+  }
+}
+
+function getOnlineUserIds(): number[] {
+  const now = Date.now();
+  const ids: number[] = [];
+  for (const [userId, data] of presenceMap) {
+    if (now - data.lastSeen < PRESENCE_STALE_MS && data.wsCount > 0) {
+      ids.push(userId);
+    }
+  }
+  return ids.sort((a, b) => a - b);
+}
 
 let wss: WebSocketServer | null = null;
 
 function setupWebSocket(server: Server) {
   wss = new WebSocketServer({ server });
 
+  // Периодическая очистка устаревших записей (на случай зависших ws без close)
+  setInterval(() => {
+    const now = Date.now();
+    for (const [userId, data] of presenceMap) {
+      if (now - data.lastSeen >= PRESENCE_STALE_MS) {
+        presenceMap.delete(userId);
+      }
+    }
+  }, PRESENCE_CLEANUP_INTERVAL_MS);
+
   wss.on("connection", (ws) => {
-    const client: WsClient = { socket: ws as unknown as WebSocket };
+    const socket = ws as unknown as WebSocket;
 
     ws.on("message", (raw) => {
-      // For MVP we accept a simple "ping" or ignore messages
       try {
-        const msg = JSON.parse(raw.toString());
-        if (msg.type === "ping") {
-          ws.send(JSON.stringify({ type: "pong", ts: Date.now() }));
+        const msg = JSON.parse(raw.toString()) as { type?: string; token?: string };
+        const t = msg?.type;
+
+        if (t === "auth" && typeof msg.token === "string") {
+          try {
+            const payload = jwt.verify(msg.token, JWT_SECRET) as { userId: number };
+            const userId = payload.userId;
+            const cur = presenceMap.get(userId);
+            if (cur) {
+              cur.lastSeen = Date.now();
+              cur.wsCount += 1;
+            } else {
+              presenceMap.set(userId, { lastSeen: Date.now(), wsCount: 1 });
+            }
+            wsToUserId.set(socket, userId);
+            ws.send(JSON.stringify({ type: "authOk", userId }));
+          } catch {
+            ws.send(JSON.stringify({ type: "authErr", message: "Invalid token" }));
+          }
+          return;
+        }
+
+        if (t === "heartbeat" || t === "ping") {
+          const userId = wsToUserId.get(socket);
+          if (userId != null) {
+            updatePresence(userId);
+          }
+          if (t === "ping") {
+            ws.send(JSON.stringify({ type: "pong", ts: Date.now() }));
+          }
+          return;
         }
       } catch {
         // ignore malformed
@@ -978,7 +1044,17 @@ function setupWebSocket(server: Server) {
     });
 
     ws.on("close", () => {
-      // nothing special for now
+      const userId = wsToUserId.get(socket);
+      wsToUserId.delete(socket);
+      if (userId != null) {
+        const cur = presenceMap.get(userId);
+        if (cur) {
+          cur.wsCount -= 1;
+          if (cur.wsCount <= 0) {
+            presenceMap.delete(userId);
+          }
+        }
+      }
     });
   });
 
@@ -995,6 +1071,25 @@ function setupWebSocket(server: Server) {
         client.send(payload);
       }
     });
+  });
+}
+
+// Helper: отправить сообщение поддержки конкретному пользователю (для уведомлений в реальном времени)
+function broadcastSupportMessageToUser(
+  targetUserId: number,
+  message: { id: number; role: string; body: string; createdAt: string }
+) {
+  if (!wss) return;
+  const payload = JSON.stringify({ type: "supportMessage", message });
+  wss.clients.forEach((client) => {
+    const ws = client as unknown as WebSocket;
+    if (ws.readyState === 1 && wsToUserId.get(ws) === targetUserId) {
+      try {
+        ws.send(payload);
+      } catch {
+        // ignore
+      }
+    }
   });
 }
 
@@ -1414,7 +1509,9 @@ app.post("/support/threads/:id/reply", authMiddleware, adminMiddleware, async (r
     const message = await prisma.supportMessage.create({
       data: { threadId: thread.id, role: "admin", authorId: req.userId, body: text }
     });
-    return res.json({ message: toSupportMessageRow(message) });
+    const row = toSupportMessageRow(message);
+    broadcastSupportMessageToUser(thread.userId, row);
+    return res.json({ message: row });
   } catch (err) {
     console.error("Support reply error:", err);
     return res.status(500).json({ message: "Ошибка отправки" });
@@ -2868,6 +2965,16 @@ app.patch(
     }
     const config = await getTradingConfig();
     return res.json(config);
+  }
+);
+
+// --- Admin: список онлайн-пользователей (для фильтра в админке) ---
+app.get(
+  "/admin/users-online",
+  authMiddleware,
+  adminMiddleware,
+  (_req: AuthRequest, res) => {
+    return res.json({ onlineUserIds: getOnlineUserIds() });
   }
 );
 
