@@ -569,7 +569,13 @@ export default function ProfilePage() {
                             <tbody className="divide-y divide-slate-800/50">
                               {displayedTrades.map((t) => {
                                 const isWin = t.status === "WIN";
-                                const pnl = isWin ? Number(t.amount) : -Number(t.amount);
+                                const baseAmount = Number(t.amount);
+                                const pnl =
+                                  typeof t.pnl === "number"
+                                    ? t.pnl
+                                    : isWin
+                                      ? baseAmount
+                                      : -baseAmount;
                                 return (
                                   <tr key={t.id} className="transition-colors hover:bg-slate-800/40 border-b border-slate-800/30 last:border-0">
                                     <td className="px-4 py-3 whitespace-nowrap text-slate-500">{formatDateTime(t.createdAt, locale)}</td>

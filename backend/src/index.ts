@@ -1105,10 +1105,20 @@ function broadcastTradeUpdate(tradeId: number) {
       }
     });
     if (!trade) return;
+    let pnl: number | undefined;
+    if (trade.status === TradeStatus.WIN) {
+      const { winPayoutPercent } = await getTradingConfig();
+      const baseAmount = Number(trade.amount);
+      pnl = baseAmount * (winPayoutPercent / 100);
+    } else if (trade.status === TradeStatus.LOSS) {
+      const baseAmount = Number(trade.amount);
+      pnl = -baseAmount;
+    }
     const payload = JSON.stringify({
       type: "tradeUpdate",
       trade: {
         ...trade,
+        ...(typeof pnl === "number" ? { pnl } : {}),
         user: trade.user ? { id: trade.user.id, demoBalance: Number(trade.user.demoBalance) } : null
       }
     });
@@ -3455,7 +3465,18 @@ app.get("/trades/completed", authMiddleware, requireNotBlockedMiddleware, async 
     orderBy: { createdAt: "desc" },
     include: { tradingPair: true }
   });
-  return res.json({ trades });
+  const { winPayoutPercent } = await getTradingConfig();
+  const tradesWithPnl = trades.map((trade) => {
+    const baseAmount = Number(trade.amount);
+    let pnl = 0;
+    if (trade.status === TradeStatus.WIN) {
+      pnl = baseAmount * (winPayoutPercent / 100);
+    } else if (trade.status === TradeStatus.LOSS) {
+      pnl = -baseAmount;
+    }
+    return { ...trade, pnl };
+  });
+  return res.json({ trades: tradesWithPnl });
 });
 
 // --- Background settlement of expired trades ---

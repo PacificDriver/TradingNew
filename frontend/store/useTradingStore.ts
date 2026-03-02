@@ -45,6 +45,8 @@ type Trade = {
   expiresAt: string;
   createdAt: string;
   tradingPair?: TradingPair;
+  /** Прибыль/убыток по сделке с учётом процента выигрыша (P/L) */
+  pnl?: number;
 };
 
 type PricePoint = {

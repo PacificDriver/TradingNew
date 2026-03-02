@@ -80,7 +80,13 @@ export const CompletedTrades = memo(function CompletedTrades() {
             <tbody className="divide-y divide-slate-800/60">
               {visible.map((trade, i) => {
                 const isWin = trade.status === "WIN";
-                const pnl = isWin ? Number(trade.amount) : -Number(trade.amount);
+                const baseAmount = Number(trade.amount);
+                const pnl =
+                  typeof trade.pnl === "number"
+                    ? trade.pnl
+                    : isWin
+                      ? baseAmount
+                      : -baseAmount;
                 return (
                   <tr
                     key={trade.id}
