@@ -7,7 +7,7 @@
     "dev": "prisma generate && ts-node-dev --respawn --transpile-only src/index.ts",
     "start": "node -r ts-node/register src/index.ts",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate deploy"
+    "prisma:migrate": "npx prisma migrate deploy"
   },
   "dependencies": {
     "@prisma/client": "^5.16.1",
