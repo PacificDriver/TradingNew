@@ -615,14 +615,7 @@ type Timeframe =
   | "2h"
   | "5h";
 
-/** Глубина истории: 30 дней */
-const MAX_CHART_HOURS = 720;
-
-/** При старте из БД грузим только последние N часов, чтобы не падать по памяти/таймауту */
-const LOAD_FROM_DB_HOURS = 168;
-
-/** Лимит свечей в памяти и в ответе API — чтобы не лагало при мелких ТФ */
-const MAX_CANDLES_PER_TIMEFRAME = 3000;
+const MAX_CHART_HOURS = 5;
 
 function timeframeToSeconds(tf: Timeframe): number {
   switch (tf) {
@@ -649,11 +642,10 @@ function timeframeToSeconds(tf: Timeframe): number {
   }
 }
 
-/** Максимум свечей: 30 дней по ТФ, но не больше MAX_CANDLES_PER_TIMEFRAME */
-function maxCandlesForChart(tf: Timeframe): number {
+/** Максимум свечей для хранения 5 часов истории по таймфрейму */
+function maxCandlesFor5h(tf: Timeframe): number {
   const sec = timeframeToSeconds(tf);
-  const for30Days = Math.ceil((MAX_CHART_HOURS * 3600) / sec);
-  return Math.min(for30Days, MAX_CANDLES_PER_TIMEFRAME);
+  return Math.ceil((MAX_CHART_HOURS * 3600) / sec);
 }
 
 type Candle = {
@@ -701,7 +693,7 @@ class CandleService {
       }
     }
     merged.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-    const maxCandles = maxCandlesForChart(timeframe);
+    const maxCandles = maxCandlesFor5h(timeframe);
     const cutoffMs = Date.now() - MAX_CHART_HOURS * 3600 * 1000;
     const trimmed = merged.filter((c) => c.startTime.getTime() >= cutoffMs);
     this.candles.set(key, trimmed.slice(-maxCandles));
@@ -753,7 +745,7 @@ class CandleService {
         close: price
       };
       list.push(candle);
-      const maxCandles = maxCandlesForChart(timeframe);
+      const maxCandles = maxCandlesFor5h(timeframe);
       const cutoffMs = ts.getTime() - MAX_CHART_HOURS * 3600 * 1000;
       const trimmed = list.filter((c) => c.startTime.getTime() >= cutoffMs);
       if (trimmed.length < list.length) {
@@ -1001,7 +993,7 @@ async function persistCandle(
 }
 
 async function loadCandlesFromDb(): Promise<void> {
-  const cutoff = new Date(Date.now() - LOAD_FROM_DB_HOURS * 3600 * 1000);
+  const cutoff = new Date(Date.now() - MAX_CHART_HOURS * 3600 * 1000);
   const rows = await prisma.ohlcCandle.findMany({
     where: { startTime: { gte: cutoff } },
     orderBy: [{ tradingPairId: "asc" }, { timeframe: "asc" }, { startTime: "asc" }]
@@ -1030,7 +1022,7 @@ async function loadCandlesFromDb(): Promise<void> {
   }
   if (rows.length > 0) {
     // eslint-disable-next-line no-console
-    console.log(`Loaded ${rows.length} candles from DB (last ${LOAD_FROM_DB_HOURS}h).`);
+    console.log(`Loaded ${rows.length} candles from DB (last ${MAX_CHART_HOURS}h).`);
   }
 }
 
@@ -3908,10 +3900,9 @@ app.get("/candles", authMiddleware, requireNotBlockedMiddleware, async (req: Aut
     return res.status(400).json({ message: "Invalid timeframe" });
   }
 
-  const maxLimit = maxCandlesForChart(tf);
-  const parsedLimit = Math.min(maxLimit, Math.max(1, Number.parseInt(limit ?? "200", 10) || 200));
+  const parsedLimit = Number.parseInt(limit ?? "200", 10);
 
-  const candles = candleService.getCandles(parsedPairId, tf, parsedLimit);
+  const candles = candleService.getCandles(parsedPairId, tf, parsedLimit || 200);
 
   return res.json({
     candles: candles.map((c) => ({

@@ -112,8 +112,7 @@ function TradePageContent() {
   type TimeframeKey = (typeof TIMEFRAMES)[number];
 
   const selectedPairId = chartSettings.selectedPairId;
-  const rawTimeframe = chartSettings.timeframe || "30s";
-  const timeframe = (TIMEFRAMES.includes(rawTimeframe as TimeframeKey) ? rawTimeframe : "1h") as TimeframeKey;
+  const timeframe = (chartSettings.timeframe || "30s") as TimeframeKey;
   const chartMode = chartSettings.chartMode ?? "line";
   const showMA = chartSettings.showMA ?? false;
   const showRSI = chartSettings.showRSI ?? false;
@@ -160,18 +159,17 @@ function TradePageContent() {
     []
   );
 
-  /** 30 дней истории, но не более 3000 свечей (чтобы не лагало) */
-  const CANDLE_CAP = 3000;
-  const candleLimitFor100h: Record<TimeframeKey, number> = useMemo(
+  /** Количество свечей для отображения 5 часов истории */
+  const candleLimitFor5h: Record<TimeframeKey, number> = useMemo(
     () => ({
-      "30s": Math.min(720 * (3600 / 30), CANDLE_CAP),
-      "1m": Math.min(720 * 60, CANDLE_CAP),
-      "5m": Math.min(720 * 12, CANDLE_CAP),
-      "10m": Math.min(720 * 6, CANDLE_CAP),
-      "15m": Math.min(720 * 4, CANDLE_CAP),
-      "1h": 720,
-      "2h": 360,
-      "5h": 144
+      "30s": 600,
+      "1m": 300,
+      "5m": 60,
+      "10m": 30,
+      "15m": 20,
+      "1h": 5,
+      "2h": 3,
+      "5h": 10
     }),
     []
   );
@@ -344,7 +342,7 @@ function TradePageContent() {
       const controller = new AbortController();
       timeoutId = setTimeout(() => controller.abort(), 10000);
       try {
-        const limit = candleLimitFor100h[timeframe] ?? 200;
+        const limit = candleLimitFor5h[timeframe] ?? 200;
         const query = new URLSearchParams({
           pairId: String(pairId),
           timeframe,
@@ -388,7 +386,7 @@ function TradePageContent() {
       if (timeoutId) clearTimeout(timeoutId);
       setCandlesLoading(false);
     };
-  }, [authChecked, token, selectedPairId, timeframe, candleLimitFor100h, t]);
+  }, [authChecked, token, selectedPairId, timeframe, candleLimitFor5h, t]);
 
   // Throttle: обновляем график по тикам не чаще чем раз в 120ms (меньше лишних ре-рендеров)
   const lastCandleUpdateRef = useRef<number>(0);
@@ -427,7 +425,7 @@ function TradePageContent() {
             low: Math.min(open, close),
             close
           });
-          const maxCandles = candleLimitFor100h[timeframe] ?? 200;
+          const maxCandles = candleLimitFor5h[timeframe] ?? 200;
           return next.slice(-maxCandles);
         }
 
@@ -452,7 +450,7 @@ function TradePageContent() {
       const t = setTimeout(runUpdate, throttleMs - elapsed);
       return () => clearTimeout(t);
     }
-  }, [selectedPairId, prices, timeframe, timeframeToMs, candleLimitFor100h]);
+  }, [selectedPairId, prices, timeframe, timeframeToMs, candleLimitFor5h]);
 
   const markers = useMemo(() => {
     if (!selectedPair) return [];
