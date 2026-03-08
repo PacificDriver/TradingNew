@@ -11,5 +11,6 @@ RUN npx prisma generate
 
 EXPOSE 4000
 
-CMD ["npm", "run", "dev"]
+# Миграции применяются при старте контейнера, затем запуск приложения
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run start"]
 

@@ -23,6 +23,7 @@ services:
       PORT: 4000
     ports:
       - "4000:4000"
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run dev"]
 
   frontend:
     build:
