@@ -618,6 +618,9 @@ type Timeframe =
 /** Глубина истории: 30 дней */
 const MAX_CHART_HOURS = 720;
 
+/** При старте из БД грузим только последние N часов, чтобы не падать по памяти/таймауту */
+const LOAD_FROM_DB_HOURS = 168;
+
 /** Лимит свечей в памяти и в ответе API — чтобы не лагало при мелких ТФ */
 const MAX_CANDLES_PER_TIMEFRAME = 3000;
 
@@ -998,7 +1001,7 @@ async function persistCandle(
 }
 
 async function loadCandlesFromDb(): Promise<void> {
-  const cutoff = new Date(Date.now() - MAX_CHART_HOURS * 3600 * 1000);
+  const cutoff = new Date(Date.now() - LOAD_FROM_DB_HOURS * 3600 * 1000);
   const rows = await prisma.ohlcCandle.findMany({
     where: { startTime: { gte: cutoff } },
     orderBy: [{ tradingPairId: "asc" }, { timeframe: "asc" }, { startTime: "asc" }]
@@ -1027,7 +1030,7 @@ async function loadCandlesFromDb(): Promise<void> {
   }
   if (rows.length > 0) {
     // eslint-disable-next-line no-console
-    console.log(`Loaded ${rows.length} candles from DB (last ${MAX_CHART_HOURS}h).`);
+    console.log(`Loaded ${rows.length} candles from DB (last ${LOAD_FROM_DB_HOURS}h).`);
   }
 }
 
