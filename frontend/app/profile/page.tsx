@@ -15,6 +15,8 @@ type MeResponse = {
     id: number;
     email: string;
     demoBalance: number;
+    balance?: number;
+    useDemoMode?: boolean;
     createdAt?: string;
     totpEnabled?: boolean;
     blockedAt?: string | null;
@@ -145,6 +147,12 @@ export default function ProfilePage() {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<number | null>(null);
+  // Смена email
+  const [newEmail, setNewEmail] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailMsg, setEmailMsg] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailStep, setEmailStep] = useState<"idle" | "code_sent">("idle");
 
   useEffect(() => {
     if (!authChecked || !token) return;
@@ -157,7 +165,9 @@ export default function ProfilePage() {
           setProfile(meData.user);
           setAuth(token ?? null, {
             ...meData.user,
-            demoBalance: meData.user.demoBalance
+            demoBalance: meData.user.demoBalance,
+            balance: meData.user.balance,
+            useDemoMode: meData.user.useDemoMode
           });
         }
         if (meData.user?.blockedAt) {
@@ -312,6 +322,61 @@ export default function ProfilePage() {
     }
   };
 
+  const handleRequestEmailChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    setEmailMsg(null);
+    const email = newEmail.trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailMsg({ type: "error", text: t("profile.emailInvalid") });
+      return;
+    }
+    setEmailLoading(true);
+    try {
+      await apiFetch("/auth/request-email-change", {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({ newEmail: email, locale: locale === "en" ? "en" : locale === "es" ? "es" : "ru" })
+      });
+      setEmailStep("code_sent");
+      setEmailMsg({ type: "success", text: t("profile.emailCodeSent") });
+    } catch (err) {
+      setEmailMsg({ type: "error", text: (err as Error).message });
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handleConfirmEmailChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token) return;
+    setEmailMsg(null);
+    const email = newEmail.trim().toLowerCase();
+    const code = emailCode.replace(/\s/g, "");
+    if (!email || !code) {
+      setEmailMsg({ type: "error", text: t("profile.emailAndCodeRequired") });
+      return;
+    }
+    setEmailLoading(true);
+    try {
+      const res = await apiFetch<{ ok: boolean; email: string }>("/auth/confirm-email-change", {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({ newEmail: email, code })
+      });
+      setProfile((p) => (p ? { ...p, email: res.email } : null));
+      setAuth(token, { ...user!, email: res.email });
+      setNewEmail("");
+      setEmailCode("");
+      setEmailStep("idle");
+      setEmailMsg({ type: "success", text: t("profile.emailChanged") });
+    } catch (err) {
+      setEmailMsg({ type: "error", text: (err as Error).message });
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
   const handleRevokeSession = async (sessionId: number, isCurrent: boolean) => {
     if (!token) return;
     setRevokingId(sessionId);
@@ -443,7 +508,12 @@ export default function ProfilePage() {
                     <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
                       <div className="glass-panel p-4">
                         <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-1.5">{t("profile.balance")}</p>
-                        <p className="text-xl sm:text-2xl font-semibold text-accent font-mono tabular-nums">${formatBalance(displayUser.demoBalance)}</p>
+                        <p className="text-xl sm:text-2xl font-semibold text-accent font-mono tabular-nums">
+                          ${formatBalance(displayUser?.useDemoMode !== false ? displayUser?.demoBalance : displayUser?.balance ?? 0)}
+                        </p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          {displayUser?.useDemoMode !== false ? t("profile.demoMode") : t("profile.realMode")}
+                        </p>
                       </div>
                       <div className="glass-panel p-4">
                         <p className="text-[10px] uppercase tracking-wider text-slate-500 mb-1.5">{t("profile.openCount")}</p>
@@ -685,6 +755,59 @@ export default function ProfilePage() {
                       )}
                     </dl>
                   </div>
+
+                  <div className="glass-panel p-5">
+                    <h3 className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-4">{t("profile.changeEmail")}</h3>
+                    <p className="text-sm text-slate-400 mb-4">{t("profile.changeEmailHint")}</p>
+                    {emailStep === "idle" ? (
+                      <form onSubmit={handleRequestEmailChange} className="space-y-4 max-w-sm">
+                        <div>
+                          <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1">{t("profile.newEmail")}</label>
+                          <input
+                            type="email"
+                            value={newEmail}
+                            onChange={(e) => setNewEmail(e.target.value)}
+                            className="input-glass w-full"
+                            placeholder="new@example.com"
+                            autoComplete="email"
+                          />
+                        </div>
+                        {emailMsg && <p className={`text-sm ${emailMsg.type === "error" ? "text-red-400" : "text-emerald-400"}`}>{emailMsg.text}</p>}
+                        <button type="submit" disabled={emailLoading} className="btn-primary py-2.5 px-4 text-sm font-semibold rounded-lg disabled:opacity-50">
+                          {emailLoading ? t("profile.sending") : t("profile.requestCode")}
+                        </button>
+                      </form>
+                    ) : (
+                      <form onSubmit={handleConfirmEmailChange} className="space-y-4 max-w-sm">
+                        <p className="text-sm text-slate-300">{t("profile.enterCodeSentTo")} <span className="font-mono text-accent">{newEmail}</span></p>
+                        <div>
+                          <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1">{t("profile.verificationCode")}</label>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={emailCode}
+                            onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                            className="input-glass w-32 font-mono text-lg"
+                            placeholder="000000"
+                          />
+                        </div>
+                        {emailMsg && <p className={`text-sm ${emailMsg.type === "error" ? "text-red-400" : "text-emerald-400"}`}>{emailMsg.text}</p>}
+                        <div className="flex gap-2">
+                          <button type="submit" disabled={emailLoading} className="btn-primary py-2.5 px-4 text-sm font-semibold rounded-lg disabled:opacity-50">
+                            {emailLoading ? t("profile.saving") : t("profile.confirmEmailChange")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setEmailStep("idle"); setEmailCode(""); setEmailMsg(null); }}
+                            className="btn-outline py-2.5 px-4 text-sm rounded-lg"
+                          >
+                            {t("common.close")}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+
                   <div className="glass-panel p-5">
                     <h3 className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-4">{t("profile.logoutSection")}</h3>
                     <p className="text-sm text-slate-400 mb-4">{t("profile.logoutHint")}</p>

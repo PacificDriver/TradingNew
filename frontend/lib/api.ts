@@ -67,8 +67,9 @@ export async function apiFetch<T>(
           code = "E429";
         } else {
           try {
-            const data = JSON.parse(text) as { message?: string };
+            const data = JSON.parse(text) as { message?: string; code?: string };
             message = data.message ?? message;
+            if (data.code) code = data.code;
           } catch {
             message = res.status === 401 ? "Необходимо войти снова" : text.length < 200 ? text : `Ошибка ${res.status}`;
           }

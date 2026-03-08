@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState, useEffect } from "react";
+import { FormEvent, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTradingStore } from "../../store/useTradingStore";
@@ -16,22 +16,43 @@ type RegisterResponse = {
   };
 };
 
+type CaptchaResponse = { id: string; image: string };
+
 const inputClass = "mt-1.5 input-glass";
 
 export default function RegisterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const refFromUrl = searchParams.get("ref")?.trim() || undefined;
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const setAuth = useTradingStore((s) => s.setAuth);
   const setAuthChecked = useTradingStore((s) => s.setAuthChecked);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [referralCode, setReferralCode] = useState(refFromUrl ?? "");
+  const [captchaId, setCaptchaId] = useState("");
+  const [captchaImage, setCaptchaImage] = useState("");
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refCode = refFromUrl || (referralCode?.trim() || undefined);
+
+  const loadCaptcha = useCallback(async () => {
+    try {
+      const data = await apiFetch<CaptchaResponse>("/auth/captcha", { method: "GET" });
+      setCaptchaId(data.id);
+      setCaptchaImage(data.image);
+      setCaptchaAnswer("");
+    } catch {
+      setCaptchaId("");
+      setCaptchaImage("");
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCaptcha();
+  }, [loadCaptcha]);
 
   useEffect(() => {
     if (refFromUrl) {
@@ -51,13 +72,20 @@ export default function RegisterPage() {
       const data = await apiFetch<RegisterResponse>("/auth/register", {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({ email, password, ...(refCode && { referralCode: refCode }) })
+        body: JSON.stringify({
+          email,
+          password,
+          captchaId,
+          captchaAnswer,
+          ...(refCode && { referralCode: refCode })
+        })
       });
       setAuth(data.token ?? null, data.user);
       setAuthChecked(true);
       router.push("/trade");
     } catch (err) {
       setError(getDisplayMessage(err, t));
+      loadCaptcha();
     } finally {
       setLoading(false);
     }
@@ -107,6 +135,36 @@ export default function RegisterPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
+            />
+          </div>
+          <div>
+            <label className="block text-[11px] uppercase tracking-wider text-slate-500 mb-1.5">
+              {t("auth.captcha")}
+            </label>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="rounded-lg border border-slate-600/60 bg-slate-900/60 overflow-hidden flex items-center justify-center min-h-[52px] min-w-[140px]">
+                {captchaImage ? (
+                  <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(captchaImage)}`} alt="" className="max-h-12 w-auto" />
+                ) : (
+                  <span className="text-slate-500 text-sm">…</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={loadCaptcha}
+                className="text-[11px] font-medium text-slate-400 hover:text-accent transition-colors"
+              >
+                {t("auth.captchaRefresh")}
+              </button>
+            </div>
+            <input
+              type="text"
+              className={`${inputClass} w-28 font-mono uppercase`}
+              placeholder={t("auth.captchaPlaceholder")}
+              value={captchaAnswer}
+              onChange={(e) => setCaptchaAnswer(e.target.value.slice(0, 6))}
+              maxLength={6}
+              autoComplete="off"
             />
           </div>
           <div>

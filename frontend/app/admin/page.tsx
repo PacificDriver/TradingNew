@@ -12,6 +12,7 @@ type AdminUser = {
   id: number;
   email: string;
   demoBalance: number;
+  balance: number;
   isAdmin: boolean;
   createdAt: string;
   blockedAt: string | null;
@@ -27,7 +28,7 @@ type TradingPairRow = {
   currentPrice: number;
 };
 
-type AdminTab = "users" | "pairs" | "referral" | "trading";
+type AdminTab = "dashboard" | "users" | "pairs" | "audit" | "trades" | "partners" | "referral" | "trading";
 
 type ReferralSettings = {
   viaManager: boolean;
@@ -36,6 +37,69 @@ type ReferralSettings = {
 
 type TradingSettings = {
   winPayoutPercent: number;
+  maxActiveTrades: number;
+  minStake: number;
+  maxStake: number;
+};
+
+type AdminStats = {
+  usersTotal: number;
+  usersToday: number;
+  tradesToday: number;
+  tradesWeek: number;
+  volumeToday: number;
+  volumeWeek: number;
+  payinsCountToday: number;
+  payinsSumToday: number;
+  payinsCountWeek: number;
+  payinsSumWeek: number;
+  payoutsCountToday: number;
+  payoutsSumToday: number;
+  payoutsCountWeek: number;
+  payoutsSumWeek: number;
+};
+
+type BalanceAuditRow = {
+  id: number;
+  userId: number;
+  userEmail: string | null;
+  type: string;
+  amount: number;
+  balanceBefore: number;
+  balanceAfter: number;
+  refType: string | null;
+  refId: string | null;
+  refBalanceType: string | null;
+  createdAt: string;
+};
+
+type AdminTradeRow = {
+  id: number;
+  userId: number;
+  userEmail: string;
+  tradingPairId: number;
+  symbol: string;
+  pairName: string;
+  amount: number;
+  direction: string;
+  status: string;
+  entryPrice: number;
+  closePrice: number | null;
+  balanceType: string;
+  expiresAt: string;
+  createdAt: string;
+};
+
+type ReferralPartnerRow = {
+  id: number;
+  email: string;
+  name: string | null;
+  referralCode: string;
+  referralClicks: number;
+  referralBalance: number;
+  cpaAmount: number | null;
+  referredCount: number;
+  createdAt: string;
 };
 
 export default function AdminPage() {
@@ -46,7 +110,7 @@ export default function AdminPage() {
   const token = useTradingStore((s) => s.token);
   const clearAuth = useTradingStore((s) => s.clearAuth);
 
-  const [activeTab, setActiveTab] = useState<AdminTab>("users");
+  const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
 
   // Users
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -76,9 +140,34 @@ export default function AdminPage() {
   const [referralLoading, setReferralLoading] = useState(false);
   const [referralSaving, setReferralSaving] = useState(false);
 
-  // Trading settings (процент выигрыша)
+  // Dashboard
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+
+  // Balance audit
+  const [auditItems, setAuditItems] = useState<BalanceAuditRow[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditUserIdInput, setAuditUserIdInput] = useState("");
+  const [auditUserId, setAuditUserId] = useState("");
+
+  // Trades
+  const [tradesItems, setTradesItems] = useState<AdminTradeRow[]>([]);
+  const [tradesTotal, setTradesTotal] = useState(0);
+  const [tradesLoading, setTradesLoading] = useState(false);
+  const [tradesUserIdInput, setTradesUserIdInput] = useState("");
+  const [tradesUserId, setTradesUserId] = useState("");
+
+  // Referral partners
+  const [partners, setPartners] = useState<ReferralPartnerRow[]>([]);
+  const [partnersLoading, setPartnersLoading] = useState(false);
+
+  // Trading settings (процент выигрыша, макс. активных сделок, мин/макс ставка)
   const [tradingSettings, setTradingSettings] = useState<TradingSettings>({
-    winPayoutPercent: 100
+    winPayoutPercent: 100,
+    maxActiveTrades: 0,
+    minStake: 1,
+    maxStake: 0
   });
   const [tradingLoading, setTradingLoading] = useState(false);
   const [tradingSaving, setTradingSaving] = useState(false);
@@ -103,6 +192,68 @@ export default function AdminPage() {
         .then((data) => setUsers(data.users ?? []))
         .catch((e) => setUsersError((e as Error).message))
         .finally(() => setUsersLoading(false));
+    }
+  }, [authChecked, user?.isAdmin, token, activeTab]);
+
+  useEffect(() => {
+    if (!authChecked || !user?.isAdmin || !token) return;
+    if (activeTab === "dashboard") {
+      setStatsLoading(true);
+      apiFetch<AdminStats>("/admin/stats", { headers: authHeaders(token) })
+        .then(setStats)
+        .catch(() => setStats(null))
+        .finally(() => setStatsLoading(false));
+    }
+  }, [authChecked, user?.isAdmin, token, activeTab]);
+
+  useEffect(() => {
+    if (!authChecked || !user?.isAdmin || !token) return;
+    if (activeTab === "audit") {
+      setAuditLoading(true);
+      const params = new URLSearchParams();
+      if (auditUserId.trim()) params.set("userId", auditUserId.trim());
+      params.set("limit", "100");
+      apiFetch<{ items: BalanceAuditRow[]; total: number }>(`/admin/balance-audit?${params}`, {
+        headers: authHeaders(token)
+      })
+        .then((data) => {
+          setAuditItems(data.items ?? []);
+          setAuditTotal(data.total ?? 0);
+        })
+        .catch(() => { setAuditItems([]); setAuditTotal(0); })
+        .finally(() => setAuditLoading(false));
+    }
+  }, [authChecked, user?.isAdmin, token, activeTab, auditUserId]);
+
+  useEffect(() => {
+    if (!authChecked || !user?.isAdmin || !token) return;
+    if (activeTab === "trades") {
+      setTradesLoading(true);
+      const params = new URLSearchParams();
+      if (tradesUserId.trim()) params.set("userId", tradesUserId.trim());
+      params.set("limit", "100");
+      apiFetch<{ items: AdminTradeRow[]; total: number }>(`/admin/trades?${params}`, {
+        headers: authHeaders(token)
+      })
+        .then((data) => {
+          setTradesItems(data.items ?? []);
+          setTradesTotal(data.total ?? 0);
+        })
+        .catch(() => { setTradesItems([]); setTradesTotal(0); })
+        .finally(() => setTradesLoading(false));
+    }
+  }, [authChecked, user?.isAdmin, token, activeTab, tradesUserId]);
+
+  useEffect(() => {
+    if (!authChecked || !user?.isAdmin || !token) return;
+    if (activeTab === "partners") {
+      setPartnersLoading(true);
+      apiFetch<{ partners: ReferralPartnerRow[] }>("/admin/referral-partners", {
+        headers: authHeaders(token)
+      })
+        .then((data) => setPartners(data.partners ?? []))
+        .catch(() => setPartners([]))
+        .finally(() => setPartnersLoading(false));
     }
   }, [authChecked, user?.isAdmin, token, activeTab]);
 
@@ -145,7 +296,7 @@ export default function AdminPage() {
       setTradingLoading(true);
       apiFetch<TradingSettings>("/admin/settings/trading", { headers: authHeaders(token) })
         .then(setTradingSettings)
-        .catch(() => setTradingSettings({ winPayoutPercent: 100 }))
+        .catch(() => setTradingSettings({ winPayoutPercent: 100, maxActiveTrades: 0, minStake: 1, maxStake: 0 }))
         .finally(() => setTradingLoading(false));
     }
   }, [authChecked, user?.isAdmin, token, activeTab]);
@@ -158,7 +309,10 @@ export default function AdminPage() {
         method: "PATCH",
         headers: authHeaders(token),
         body: JSON.stringify({
-          winPayoutPercent: tradingSettings.winPayoutPercent
+          winPayoutPercent: tradingSettings.winPayoutPercent,
+          maxActiveTrades: tradingSettings.maxActiveTrades,
+          minStake: tradingSettings.minStake,
+          maxStake: tradingSettings.maxStake
         })
       });
       setTradingSettings(data);
@@ -193,7 +347,7 @@ export default function AdminPage() {
     if (!token) return;
     setActingUserId(targetId);
     try {
-      const { user } = await apiFetch<{ user: { id: number; demoBalance: number } }>(
+      const { user } = await apiFetch<{ user: { id: number; balance: number; demoBalance: number } }>(
         `/admin/users/${targetId}/balance`,
         {
           method: "PATCH",
@@ -202,7 +356,7 @@ export default function AdminPage() {
         }
       );
       setUsers((prev) =>
-        prev.map((u) => (u.id === targetId ? { ...u, demoBalance: user.demoBalance } : u))
+        prev.map((u) => (u.id === targetId ? { ...u, balance: user.balance, demoBalance: user.demoBalance } : u))
       );
       setBalanceEditId(null);
       setBalanceEditValue("");
@@ -339,52 +493,233 @@ export default function AdminPage() {
           </Link>
         </div>
 
-        <div className="flex gap-1 p-1 rounded-xl glass mb-6">
-          <button
-            type="button"
-            onClick={() => setActiveTab("users")}
-            className={`flex-1 rounded-lg py-2.5 px-4 text-sm font-semibold transition-all ${
-              activeTab === "users"
-                ? "bg-surface text-slate-100 border border-slate-600/60"
-                : "text-slate-500 hover:text-slate-300"
-            }`}
-          >
-            Пользователи
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("pairs")}
-            className={`flex-1 rounded-lg py-2.5 px-4 text-sm font-semibold transition-all ${
-              activeTab === "pairs"
-                ? "bg-surface text-slate-100 border border-slate-600/60"
-                : "text-slate-500 hover:text-slate-300"
-            }`}
-          >
-            Торговые пары
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("referral")}
-            className={`flex-1 rounded-lg py-2.5 px-4 text-sm font-semibold transition-all ${
-              activeTab === "referral"
-                ? "bg-surface text-slate-100 border border-slate-600/60"
-                : "text-slate-500 hover:text-slate-300"
-            }`}
-          >
-            Реферальная программа
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("trading")}
-            className={`flex-1 rounded-lg py-2.5 px-4 text-sm font-semibold transition-all ${
-              activeTab === "trading"
-                ? "bg-surface text-slate-100 border border-slate-600/60"
-                : "text-slate-500 hover:text-slate-300"
-            }`}
-          >
-            Торговля
-          </button>
+        <div className="flex flex-wrap gap-1 p-1 rounded-xl glass mb-6">
+          {[
+            { id: "dashboard" as const, label: "Обзор" },
+            { id: "users" as const, label: "Пользователи" },
+            { id: "pairs" as const, label: "Пары" },
+            { id: "audit" as const, label: "Аудит" },
+            { id: "trades" as const, label: "Сделки" },
+            { id: "partners" as const, label: "Партнёры" },
+            { id: "referral" as const, label: "Реферал" },
+            { id: "trading" as const, label: "Торговля" }
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setActiveTab(id)}
+              className={`rounded-lg py-2 px-3 text-sm font-semibold transition-all ${
+                activeTab === id
+                  ? "bg-surface text-slate-100 border border-slate-600/60"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
+
+        {activeTab === "dashboard" && (
+          <div className="card space-y-6">
+            <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Сводка</h2>
+            {statsLoading ? (
+              <div className="py-8 text-center text-slate-500 text-sm">Загрузка…</div>
+            ) : stats ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="rounded-lg border border-slate-700/60 p-4">
+                  <p className="text-[11px] uppercase text-slate-500">Пользователи</p>
+                  <p className="text-2xl font-semibold text-slate-200 mt-1">{stats.usersTotal}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">+{stats.usersToday} за сегодня</p>
+                </div>
+                <div className="rounded-lg border border-slate-700/60 p-4">
+                  <p className="text-[11px] uppercase text-slate-500">Сделки</p>
+                  <p className="text-2xl font-semibold text-slate-200 mt-1">{stats.tradesToday} / {stats.tradesWeek}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">сегодня / за 7 дней</p>
+                </div>
+                <div className="rounded-lg border border-slate-700/60 p-4">
+                  <p className="text-[11px] uppercase text-slate-500">Объём торгов</p>
+                  <p className="text-2xl font-semibold text-slate-200 mt-1">
+                    ${stats.volumeToday.toLocaleString()} / ${stats.volumeWeek.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">сегодня / за 7 дней</p>
+                </div>
+                <div className="rounded-lg border border-slate-700/60 p-4">
+                  <p className="text-[11px] uppercase text-slate-500">Пополнения / Выводы</p>
+                  <p className="text-lg font-semibold text-slate-200 mt-1">
+                    +${stats.payinsSumToday.toFixed(0)} ({stats.payinsCountToday}) / −${stats.payoutsSumToday.toFixed(0)} ({stats.payoutsCountToday})
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">сегодня. За неделю: +${stats.payinsSumWeek.toFixed(0)} / −${stats.payoutsSumWeek.toFixed(0)}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-slate-500 text-sm">Не удалось загрузить</div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "audit" && (
+          <div className="card overflow-hidden">
+            <div className="border-b border-slate-700/60 px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
+              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Аудит баланса</h2>
+              <input
+                type="text"
+                placeholder="User ID (пусто = все)"
+                value={auditUserIdInput}
+                onChange={(e) => setAuditUserIdInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && setAuditUserId(auditUserIdInput)}
+                className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-sm w-36 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setAuditUserId(auditUserIdInput)}
+                className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700"
+              >
+                Показать
+              </button>
+            </div>
+            {auditLoading ? (
+              <div className="py-12 text-center text-slate-500 text-sm">Загрузка…</div>
+            ) : auditItems.length === 0 ? (
+              <div className="py-10 px-4 text-center text-slate-500 text-sm">Нет записей</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[800px] text-sm">
+                  <thead className="border-b border-slate-700/60">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">Дата</th>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">User</th>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">Тип</th>
+                      <th className="px-4 py-3 text-right text-slate-500 font-medium">Сумма</th>
+                      <th className="px-4 py-3 text-right text-slate-500 font-medium">До</th>
+                      <th className="px-4 py-3 text-right text-slate-500 font-medium">После</th>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">ref</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {auditItems.map((r) => (
+                      <tr key={r.id} className="hover:bg-slate-800/30">
+                        <td className="px-4 py-2 text-slate-400 text-xs">{new Date(r.createdAt).toLocaleString()}</td>
+                        <td className="px-4 py-2 text-slate-300">{r.userEmail ?? `#${r.userId}`}</td>
+                        <td className="px-4 py-2 text-slate-400">{r.type}</td>
+                        <td className="px-4 py-2 text-right font-mono text-slate-300">{r.amount >= 0 ? "+" : ""}{r.amount.toFixed(2)}</td>
+                        <td className="px-4 py-2 text-right font-mono text-slate-500">{r.balanceBefore.toFixed(2)}</td>
+                        <td className="px-4 py-2 text-right font-mono text-slate-300">{r.balanceAfter.toFixed(2)}</td>
+                        <td className="px-4 py-2 text-slate-500 text-xs">{r.refType ?? ""} {r.refId ?? ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {auditTotal > 0 && (
+              <div className="px-4 py-2 border-t border-slate-700/60 text-xs text-slate-500">
+                Показано {auditItems.length} из {auditTotal}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "trades" && (
+          <div className="card overflow-hidden">
+            <div className="border-b border-slate-700/60 px-4 sm:px-6 py-3 flex flex-wrap items-center gap-3">
+              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Сделки</h2>
+              <input
+                type="text"
+                placeholder="User ID (пусто = все)"
+                value={tradesUserIdInput}
+                onChange={(e) => setTradesUserIdInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && setTradesUserId(tradesUserIdInput)}
+                className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-sm w-36 font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setTradesUserId(tradesUserIdInput)}
+                className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-700"
+              >
+                Показать
+              </button>
+            </div>
+            {tradesLoading ? (
+              <div className="py-12 text-center text-slate-500 text-sm">Загрузка…</div>
+            ) : tradesItems.length === 0 ? (
+              <div className="py-10 px-4 text-center text-slate-500 text-sm">Нет сделок</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[700px] text-sm">
+                  <thead className="border-b border-slate-700/60">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">Дата</th>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">User</th>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">Пара</th>
+                      <th className="px-4 py-3 text-right text-slate-500 font-medium">Сумма</th>
+                      <th className="px-4 py-3 text-center text-slate-500 font-medium">Направление</th>
+                      <th className="px-4 py-3 text-center text-slate-500 font-medium">Результат</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {tradesItems.map((t) => (
+                      <tr key={t.id} className="hover:bg-slate-800/30">
+                        <td className="px-4 py-2 text-slate-400 text-xs">{new Date(t.createdAt).toLocaleString()}</td>
+                        <td className="px-4 py-2 text-slate-300 truncate max-w-[180px]">{t.userEmail}</td>
+                        <td className="px-4 py-2 font-mono text-slate-400">{t.symbol}</td>
+                        <td className="px-4 py-2 text-right font-mono text-slate-300">${t.amount.toFixed(0)}</td>
+                        <td className="px-4 py-2 text-center">{t.direction === "LONG" ? "↑" : "↓"}</td>
+                        <td className="px-4 py-2 text-center">
+                          <span className={t.status === "WIN" ? "text-emerald-400" : t.status === "LOSS" ? "text-red-400" : "text-slate-500"}>{t.status}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {tradesTotal > 0 && (
+              <div className="px-4 py-2 border-t border-slate-700/60 text-xs text-slate-500">
+                Показано {tradesItems.length} из {tradesTotal}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "partners" && (
+          <div className="card overflow-hidden">
+            <div className="border-b border-slate-700/60 px-4 sm:px-6 py-3">
+              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Реферальные партнёры</h2>
+            </div>
+            {partnersLoading ? (
+              <div className="py-12 text-center text-slate-500 text-sm">Загрузка…</div>
+            ) : partners.length === 0 ? (
+              <div className="py-10 px-4 text-center text-slate-500 text-sm">Нет партнёров</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[600px] text-sm">
+                  <thead className="border-b border-slate-700/60">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">ID</th>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">Email</th>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">Код</th>
+                      <th className="px-4 py-3 text-right text-slate-500 font-medium">Клики</th>
+                      <th className="px-4 py-3 text-right text-slate-500 font-medium">Баланс</th>
+                      <th className="px-4 py-3 text-right text-slate-500 font-medium">Привлечено</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {partners.map((p) => (
+                      <tr key={p.id} className="hover:bg-slate-800/30">
+                        <td className="px-4 py-3 font-mono text-slate-400">{p.id}</td>
+                        <td className="px-4 py-3 text-slate-200 truncate max-w-[200px]">{p.email}</td>
+                        <td className="px-4 py-3 font-mono text-slate-400">{p.referralCode}</td>
+                        <td className="px-4 py-3 text-right font-mono text-slate-400">{p.referralClicks}</td>
+                        <td className="px-4 py-3 text-right font-mono text-slate-300">{p.referralBalance.toFixed(2)} $</td>
+                        <td className="px-4 py-3 text-right font-mono text-slate-400">{p.referredCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {activeTab === "users" && (
           <div className="card overflow-hidden">
@@ -487,14 +822,14 @@ export default function AdminPage() {
                             </span>
                           ) : (
                             <button
-                              type="button"
-                              onClick={() => {
-                                setBalanceEditId(u.id);
-                                setBalanceEditValue(String(u.demoBalance ?? 0));
-                              }}
-                              className="font-mono text-slate-300 hover:text-accent transition-colors"
-                            >
-                              {Number(u.demoBalance ?? 0).toLocaleString()} $
+                                type="button"
+                                onClick={() => {
+                                  setBalanceEditId(u.id);
+                                  setBalanceEditValue(String(u.balance ?? 0));
+                                }}
+                                className="font-mono text-slate-300 hover:text-accent transition-colors"
+                              >
+                              {Number(u.balance ?? 0).toLocaleString()} $
                             </button>
                           )}
                         </td>
@@ -774,6 +1109,57 @@ export default function AdminPage() {
                     ).toLocaleString()}{" "}
                     $
                   </p>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-2">
+                    Макс. активных сделок: {tradingSettings.maxActiveTrades === 0 ? "без лимита" : tradingSettings.maxActiveTrades}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={tradingSettings.maxActiveTrades}
+                    onChange={(e) =>
+                      setTradingSettings((s) => ({
+                        ...s,
+                        maxActiveTrades: Math.min(100, Math.max(0, Math.round(Number(e.target.value) || 0)))
+                      }))
+                    }
+                    className="w-24 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm font-mono text-slate-200 outline-none focus:border-accent"
+                  />
+                  <p className="text-slate-500 text-xs mt-1">0 = без лимита</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-2">Мин. ставка ($)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={tradingSettings.minStake}
+                      onChange={(e) =>
+                        setTradingSettings((s) => ({
+                          ...s,
+                          minStake: Math.max(0, Math.round(Number(e.target.value) || 0))
+                        }))
+                      }
+                      className="w-24 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm font-mono text-slate-200 outline-none focus:border-accent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-400 mb-2">Макс. ставка ($)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={tradingSettings.maxStake || ""}
+                      onChange={(e) => {
+                        const v = e.target.value === "" ? 0 : Math.max(0, Math.round(Number(e.target.value) || 0));
+                        setTradingSettings((s) => ({ ...s, maxStake: v }));
+                      }}
+                      placeholder="0 = без лимита"
+                      className="w-24 rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm font-mono text-slate-200 outline-none focus:border-accent"
+                    />
+                    <p className="text-slate-500 text-xs mt-1">0 = без лимита</p>
+                  </div>
                 </div>
                 <button
                   type="button"

@@ -12,6 +12,11 @@ import { InvestButton } from "./InvestButton";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { useDepositModal } from "./DepositModal";
 
+function getEffectiveBalance(user: { demoBalance: number; balance?: number; useDemoMode?: boolean } | null): number {
+  if (!user) return 0;
+  return user.useDemoMode !== false ? Number(user.demoBalance) : Number(user.balance ?? 0);
+}
+
 function formatBalance(value: number | undefined | null) {
   if (value == null) return "-";
   const numeric = Number(value);
@@ -31,9 +36,14 @@ export function AppHeader() {
   const token = useTradingStore((s) => s.token);
   const user = useTradingStore((s) => s.user);
   const clearAuth = useTradingStore((s) => s.clearAuth);
+  const updateUserBalances = useTradingStore((s) => s.updateUserBalances);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [demoAddOpen, setDemoAddOpen] = useState(false);
+  const [demoAddLoading, setDemoAddLoading] = useState(false);
   const isLoggedIn = Boolean(user ?? token);
   const supportUnread = useSupportUnread();
+  const effectiveBalance = getEffectiveBalance(user);
+  const isDemoMode = user?.useDemoMode !== false;
 
   const pairs = useTradingStore((s) => s.pairs);
   const setPairs = useTradingStore((s) => s.setPairs);
@@ -64,6 +74,40 @@ export function AppHeader() {
   };
 
   const { openDepositModal } = useDepositModal() ?? {};
+
+  const toggleDemoMode = async () => {
+    if (!token || user == null) return;
+    const next = !isDemoMode;
+    setDemoAddOpen(false);
+    try {
+      const res = await apiFetch<{ useDemoMode: boolean; demoBalance: number; balance: number }>("/me", {
+        method: "PATCH",
+        headers: authHeaders(token),
+        body: JSON.stringify({ useDemoMode: next })
+      });
+      updateUserBalances({ useDemoMode: res.useDemoMode, demoBalance: res.demoBalance, balance: res.balance });
+    } catch {
+      // keep current
+    }
+  };
+
+  const addDemoFunds = async (amount: number) => {
+    if (!token || !isDemoMode) return;
+    setDemoAddLoading(true);
+    try {
+      const res = await apiFetch<{ demoBalance: number }>("/demo/add-funds", {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({ amount })
+      });
+      updateUserBalances({ demoBalance: res.demoBalance });
+      setDemoAddOpen(false);
+    } catch {
+      // ignore
+    } finally {
+      setDemoAddLoading(false);
+    }
+  };
 
   const linkClass = (href: string) => {
     const active = pathname === href;
@@ -131,44 +175,89 @@ export function AppHeader() {
         )}
         {user && (
           <>
-            {/* Мобильный баланс: только сумма + иконка пополнения */}
+            {/* Мобильный: баланс + переключатель Demo/Real + пополнение/начислить */}
             <div className="flex sm:hidden items-center gap-1 min-h-[40px]">
               <button
                 type="button"
-                onClick={() => openDepositModal?.()}
+                onClick={() => (isDemoMode ? setDemoAddOpen((v) => !v) : openDepositModal?.())}
                 className="flex items-center rounded-lg glass border border-slate-700/60 px-2 py-1.5 text-xs font-semibold text-accent font-mono touch-manipulation tabular-nums"
               >
-                ${formatBalance(user.demoBalance)}
+                ${formatBalance(effectiveBalance)}
+                <span className="ml-1 text-[10px] text-slate-500 normal-case">{isDemoMode ? t("header.demo") : t("header.real")}</span>
               </button>
               <button
                 type="button"
-                onClick={() => openDepositModal?.()}
+                onClick={toggleDemoMode}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-600 bg-slate-800/80 text-slate-300 hover:bg-slate-700/80 touch-manipulation shrink-0"
+                title={isDemoMode ? t("header.switchToReal") : t("header.switchToDemo")}
+                aria-label={isDemoMode ? t("header.switchToReal") : t("header.switchToDemo")}
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => (isDemoMode ? setDemoAddOpen((v) => !v) : openDepositModal?.())}
                 className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent/20 border border-accent/40 text-accent touch-manipulation shrink-0"
-                aria-label={t("header.deposit")}
+                aria-label={isDemoMode ? t("header.addFunds") : t("header.deposit")}
               >
                 <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
               </button>
             </div>
-            {/* Десктоп: баланс + кнопка пополнения */}
+            {/* Десктоп: баланс + переключатель Demo/Real + пополнение/начислить */}
             <div className="hidden sm:flex items-center gap-2 rounded-xl glass px-3 py-2 min-h-[44px]">
-              <div className="flex flex-col items-end pr-1 border-r border-slate-700/60">
+              <div className="flex flex-col items-end pr-2 border-r border-slate-700/60">
                 <span className="text-[10px] uppercase tracking-wider text-slate-500">{t("header.balance")}</span>
                 <span className="text-sm font-semibold text-accent font-mono leading-tight">
-                  ${formatBalance(user.demoBalance)}
+                  ${formatBalance(effectiveBalance)}
+                  <span className="ml-1.5 text-[10px] font-normal text-slate-500 normal-case">({isDemoMode ? t("header.demo") : t("header.real")})</span>
                 </span>
               </div>
               <button
                 type="button"
-                onClick={() => openDepositModal?.()}
-                className="flex items-center gap-1.5 rounded-lg bg-accent/15 border border-accent/40 px-2.5 py-1.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/25 hover:border-accent/50"
+                onClick={toggleDemoMode}
+                className="flex items-center gap-1 rounded-lg border border-slate-600 bg-slate-800/80 px-2 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700/80 transition-colors"
+                title={isDemoMode ? t("header.switchToReal") : t("header.switchToDemo")}
               >
+                {isDemoMode ? t("header.demo") : t("header.real")}
                 <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                 </svg>
-                {t("header.deposit")}
               </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => (isDemoMode ? setDemoAddOpen((v) => !v) : openDepositModal?.())}
+                  className="flex items-center gap-1.5 rounded-lg bg-accent/15 border border-accent/40 px-2.5 py-1.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/25 hover:border-accent/50"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  {isDemoMode ? t("header.addFunds") : t("header.deposit")}
+                </button>
+                {isDemoMode && demoAddOpen && (
+                  <>
+                    <div className="fixed inset-0 z-[95]" aria-hidden onClick={() => setDemoAddOpen(false)} />
+                    <div className="absolute right-0 top-full z-[100] mt-1 w-40 rounded-lg glass-strong border border-slate-600/80 py-2 shadow-xl">
+                      <p className="px-3 pb-2 text-[10px] uppercase tracking-wider text-slate-500">{t("header.addToDemo")}</p>
+                      {[100, 500, 1000, 5000].map((amt) => (
+                        <button
+                          key={amt}
+                          type="button"
+                          disabled={demoAddLoading}
+                          onClick={() => addDemoFunds(amt)}
+                          className="w-full px-3 py-2 text-left text-sm font-medium text-slate-200 hover:bg-slate-700/60 disabled:opacity-50"
+                        >
+                          +${amt}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </>
         )}

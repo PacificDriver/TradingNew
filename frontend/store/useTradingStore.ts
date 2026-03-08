@@ -13,6 +13,10 @@ type User = {
   id: number;
   email: string;
   demoBalance: number;
+  /** Реальный баланс (обычная торговля) */
+  balance?: number;
+  /** true = демо-режим (demoBalance), false = реальная торговля (balance) */
+  useDemoMode?: boolean;
   isAdmin?: boolean;
   /** Полная блокировка: торги и вывод запрещены */
   blockedAt?: string | null;
@@ -93,6 +97,8 @@ type State = {
 
 type Actions = {
   setAuth: (token: string | null, user: User) => void;
+  /** Обновить балансы и/или режим без полного setAuth */
+  updateUserBalances: (updates: { demoBalance?: number; balance?: number; useDemoMode?: boolean }) => void;
   clearAuth: () => void;
   setPairs: (pairs: TradingPair[]) => void;
   toggleFavoritePair: (pairId: number) => void;
@@ -140,6 +146,18 @@ export const useTradingStore = create<State & Actions>()(
       soundOnWin: true,
 
       setAuth: (token, user) => set({ token, user }),
+      updateUserBalances: (updates) =>
+        set((state) => {
+          if (!state.user) return state;
+          return {
+            user: {
+              ...state.user,
+              ...(updates.demoBalance !== undefined && { demoBalance: updates.demoBalance }),
+              ...(updates.balance !== undefined && { balance: updates.balance }),
+              ...(updates.useDemoMode !== undefined && { useDemoMode: updates.useDemoMode })
+            }
+          };
+        }),
       clearAuth: () =>
         set({
           token: null,
@@ -239,11 +257,16 @@ export const useTradingStore = create<State & Actions>()(
             isCompleted && (trade.status === "WIN" || trade.status === "LOSS")
               ? { status: trade.status, tradeId: trade.id }
               : null;
+          const payloadUser = (trade as { user?: { id?: number; demoBalance?: number; balance?: number; useDemoMode?: boolean; effectiveBalance?: number } }).user;
           const user =
-            state.user &&
-            (trade as { userId?: number; user?: { demoBalance?: number } }).userId === state.user.id &&
-            (trade as { user?: { demoBalance?: number } }).user?.demoBalance != null
-              ? { ...state.user, demoBalance: Number((trade as unknown as { user: { demoBalance: number } }).user.demoBalance) }
+            state.user && (trade as { userId?: number }).userId === state.user.id && payloadUser
+              ? {
+                  ...state.user,
+                  ...(payloadUser.demoBalance != null && { demoBalance: Number(payloadUser.demoBalance) }),
+                  ...(payloadUser.balance != null && { balance: Number(payloadUser.balance) }),
+                  ...(payloadUser.useDemoMode !== undefined && { useDemoMode: payloadUser.useDemoMode }),
+                  ...(payloadUser.effectiveBalance != null && (payloadUser.useDemoMode ? { demoBalance: Number(payloadUser.effectiveBalance) } : { balance: Number(payloadUser.effectiveBalance) }))
+                }
               : state.user;
           return {
             activeTrades: active,

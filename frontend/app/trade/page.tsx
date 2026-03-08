@@ -65,6 +65,11 @@ type TradesResponse = {
   trades: any[];
 };
 
+type TradingConfigResponse = {
+  winPayoutPercent: number;
+  maxActiveTrades: number;
+};
+
 function TradePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -72,6 +77,7 @@ function TradePageContent() {
   const token = useTradingStore((s) => s.token);
   const authChecked = useTradingStore((s) => s.authChecked);
   const user = useTradingStore((s) => s.user);
+  const updateUserBalances = useTradingStore((s) => s.updateUserBalances);
   const setAuth = useTradingStore((s) => s.setAuth);
   const clearAuth = useTradingStore((s) => s.clearAuth);
   const pairs = useTradingStore((s) => s.pairs);
@@ -129,6 +135,11 @@ function TradePageContent() {
   const [openDropdown, setOpenDropdown] = useState<"chart" | "timeframe" | "indicators" | null>(null);
   /** Модалка приветствия (показывается при первом визите, если не скрыта) */
   const [welcomeModalOpen, setWelcomeModalOpen] = useState(false);
+  /** Конфиг торговли (выплата %, лимит активных сделок) */
+  const [tradingConfig, setTradingConfig] = useState<TradingConfigResponse>({ winPayoutPercent: 100, maxActiveTrades: 0 });
+  /** Модалка подтверждения крупной ставки */
+  const [confirmLargeBetOpen, setConfirmLargeBetOpen] = useState(false);
+  const [pendingDirection, setPendingDirection] = useState<TradeDirection | null>(null);
   const welcomeShownRef = useRef(false);
   /** Сообщение о начислении бонуса за соцсети (показывается один раз после credited) */
   const [socialBonusMessage, setSocialBonusMessage] = useState(false);
@@ -184,8 +195,12 @@ function TradePageContent() {
         const completed = await apiFetch<TradesResponse>("/trades/completed", {
           headers: authHeaders(token)
         });
+        const config = await apiFetch<TradingConfigResponse>("/trading/config", {
+          headers: authHeaders(token)
+        });
         setActiveTrades(active.trades);
         setCompletedTrades(completed.trades);
+        setTradingConfig(config);
       } catch (err) {
         if (isAuthError(err)) {
           clearAuth();
@@ -442,6 +457,9 @@ function TradePageContent() {
     const actives: Trade[] = activeTrades.filter(
       (t) => t.tradingPairId === selectedPair.id
     );
+    const completedForPair = completedTrades.filter(
+      (t) => t.tradingPairId === selectedPair.id
+    );
     const list: Array<{
       id: number;
       kind: "entry" | "exit";
@@ -467,15 +485,37 @@ function TradePageContent() {
         isLatest: t.id === latestActiveId
       });
     }
+    for (const t of completedForPair) {
+      if (t.status !== "ACTIVE" && (t.closePrice != null || t.entryPrice != null)) {
+        list.push({
+          id: t.id,
+          kind: "exit",
+          ts: new Date(t.expiresAt).getTime(),
+          price: Number(t.closePrice ?? t.entryPrice),
+          direction: t.direction,
+          status: t.status as "WIN" | "LOSS"
+        });
+      }
+    }
     return list.sort((a, b) => a.ts - b.ts);
-  }, [activeTrades, selectedPair]);
+  }, [activeTrades, completedTrades, selectedPair]);
 
-  async function place(direction: TradeDirection) {
+  const effectiveBalance = user
+    ? (user.useDemoMode ? Number(user.demoBalance) : Number(user.balance ?? 0))
+    : 0;
+  const isLargeBet =
+    amount > 100 || (effectiveBalance > 0 && amount > effectiveBalance * 0.2);
+  const maxActiveReached =
+    tradingConfig.maxActiveTrades > 0 &&
+    activeTrades.length >= tradingConfig.maxActiveTrades;
+  const potentialWin = amount * (tradingConfig.winPayoutPercent / 100);
+
+  async function doPlace(direction: TradeDirection) {
     if (!authChecked || !user || !selectedPair) return;
     setError(null);
     setPlacing(true);
     try {
-      const res = await apiFetch<{ trade?: Record<string, unknown>; balance: number }>("/trade/open", {
+      const res = await apiFetch<{ trade?: Record<string, unknown>; balance: number; balanceType?: "demo" | "real" }>("/trade/open", {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify({
@@ -486,7 +526,8 @@ function TradePageContent() {
         })
       });
       if (user && res.balance != null) {
-        setAuth(token ?? null, { ...user, demoBalance: res.balance });
+        const isDemo = res.balanceType === "demo";
+        updateUserBalances(isDemo ? { demoBalance: res.balance } : { balance: res.balance });
       }
       if (res.trade && (res.trade.status as string) === "ACTIVE") {
         const newTrade: Trade = {
@@ -510,6 +551,25 @@ function TradePageContent() {
     }
   }
 
+  function place(direction: TradeDirection) {
+    if (!user || !selectedPair) return;
+    if (maxActiveReached) return;
+    if (isLargeBet) {
+      setPendingDirection(direction);
+      setConfirmLargeBetOpen(true);
+      return;
+    }
+    doPlace(direction);
+  }
+
+  function confirmLargeBet() {
+    if (pendingDirection != null) {
+      doPlace(pendingDirection);
+      setPendingDirection(null);
+      setConfirmLargeBetOpen(false);
+    }
+  }
+
   function formatBalance(value: number | undefined) {
     if (value == null) return "-";
     const numeric = Number(value);
@@ -527,6 +587,32 @@ function TradePageContent() {
 
   const content = (
     <>
+      {confirmLargeBetOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="rounded-2xl bg-slate-900 border border-slate-700 shadow-xl max-w-sm w-full p-5">
+            <p className="font-medium text-slate-200 mb-1">{t("trade.confirmLargeBetTitle")}</p>
+            <p className="text-sm text-slate-400 mb-4">
+              {t("trade.confirmLargeBetText", { amount: String(amount), percent: effectiveBalance > 0 ? Math.round((amount / effectiveBalance) * 100) : 0 })}
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setConfirmLargeBetOpen(false); setPendingDirection(null); }}
+                className="flex-1 py-2.5 rounded-xl border border-slate-600 text-slate-300 hover:bg-slate-800 transition-colors"
+              >
+                {t("trade.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={confirmLargeBet}
+                className="flex-1 py-2.5 rounded-xl bg-accent text-slate-950 font-medium hover:opacity-90 transition-opacity"
+              >
+                {t("trade.confirmBet")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <WelcomeModal
         open={welcomeModalOpen}
         onClose={(dontShowAgain) => {
@@ -861,6 +947,7 @@ function TradePageContent() {
               <div className="grid grid-cols-1 gap-2 xl:gap-3">
                 {/* Строка: сумма + время — в одну линию на всех экранах */}
                 {!mobileOrderCollapsed && (
+                <>
                 <div className="flex flex-row gap-2 sm:gap-3 w-full">
                   <div className="flex flex-1 w-1/2 min-w-0 items-center gap-1.5">
                     <span className="text-slate-500 text-xs sm:text-sm shrink-0">$</span>
@@ -891,13 +978,35 @@ function TradePageContent() {
                     <span className="text-slate-500 text-xs sm:text-sm shrink-0">{t("trade.sec")}</span>
                   </div>
                 </div>
+                <p className="text-[11px] text-slate-500 text-center">
+                  {t("trade.payout")} {tradingConfig.winPayoutPercent}% · {t("trade.ifWin")} +${potentialWin.toFixed(2)}
+                </p>
+                {completedTrades.length > 0 && (
+                  <div className="flex items-center justify-center gap-4 text-[11px]">
+                    <span className="text-slate-500">
+                      {t("trade.winRate")}: <span className="font-mono text-slate-300">
+                        {Math.round((completedTrades.filter((x) => x.status === "WIN").length / completedTrades.length) * 100)}%
+                      </span>
+                    </span>
+                    <span className="text-slate-500">
+                      {t("trade.pl")}: <span className={`font-mono ${completedTrades.reduce((s, x) => s + (x.pnl ?? 0), 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {(() => {
+                          const pl = completedTrades.reduce((s, x) => s + (x.pnl ?? 0), 0);
+                          return pl >= 0 ? `+$${pl.toFixed(2)}` : `-$${Math.abs(pl).toFixed(2)}`;
+                        })()}
+                      </span>
+                    </span>
+                  </div>
+                )}
+                </>
                 )}
                 {/* Кнопки LONG / SHORT */}
                 <div className="grid grid-cols-2 gap-2 sm:gap-3">
                   <button
                     type="button"
+                    title={maxActiveReached ? t("trade.maxActiveTradesReached") : undefined}
                     className="rounded-xl min-h-[48px] sm:min-h-[52px] py-3 text-base font-semibold bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 touch-manipulation shadow-[0_0_16px_rgba(16,185,129,0.2)] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    disabled={placing}
+                    disabled={placing || maxActiveReached}
                     onClick={() => place("LONG")}
                   >
                     {placing ? (
@@ -907,8 +1016,9 @@ function TradePageContent() {
                   </button>
                   <button
                     type="button"
+                    title={maxActiveReached ? t("trade.maxActiveTradesReached") : undefined}
                     className="rounded-xl min-h-[48px] sm:min-h-[52px] py-3 text-base font-semibold bg-orange-500/95 hover:bg-orange-400 active:scale-[0.98] text-slate-950 touch-manipulation shadow-[0_0_16px_rgba(249,115,22,0.2)] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                    disabled={placing}
+                    disabled={placing || maxActiveReached}
                     onClick={() => place("SHORT")}
                   >
                     {placing ? (
@@ -917,6 +1027,11 @@ function TradePageContent() {
                     SHORT ↓
                   </button>
                 </div>
+                {maxActiveReached && (
+                  <p className="text-[11px] text-amber-400/90 text-center">
+                    {t("trade.maxActiveTradesReached")}
+                  </p>
+                )}
 
                 {selectedPair && (
                   <p className="text-[11px] text-slate-500 text-center">

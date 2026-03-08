@@ -70,11 +70,11 @@ export default function DepositPage() {
 
   useEffect(() => {
     if (!doneReturn || !token || !user) return;
-    apiFetch<{ user: { demoBalance: number } }>("/me", {
+    apiFetch<{ user: { demoBalance: number; balance?: number; useDemoMode?: boolean } }>("/me", {
       credentials: "include",
       headers: { Authorization: `Bearer ${token}` }
     })
-      .then((data) => refreshUser(token, { ...user, demoBalance: data.user.demoBalance }))
+      .then((data) => refreshUser(token, { ...user, demoBalance: data.user.demoBalance, balance: data.user.balance, useDemoMode: data.user.useDemoMode }))
       .catch(() => {});
   }, [doneReturn]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -138,7 +138,7 @@ export default function DepositPage() {
   const handleWithdrawSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const num = parseFloat(withdrawAmount.replace(",", "."));
-    const balance = user?.demoBalance ?? 0;
+    const balance = Number(user?.balance ?? 0);
     if (!Number.isFinite(num) || num < 1 || num > balance) return;
     if (highHelpEnabled && (withdrawCard.replace(/\s/g, "").length < 16 || !withdrawCardHolder.trim())) {
       setWithdrawError(t("deposit.errorCard"));
@@ -165,8 +165,8 @@ export default function DepositPage() {
         setWithdrawCard("");
         setWithdrawCardHolder("");
         if (user && token) {
-          const updated = await apiFetch<{ user: { demoBalance: number } }>("/me", { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : {} });
-          refreshUser(token, { ...user, demoBalance: updated.user.demoBalance });
+          const updated = await apiFetch<{ user: { demoBalance: number; balance?: number; useDemoMode?: boolean } }>("/me", { credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : {} });
+          refreshUser(token, { ...user, demoBalance: updated.user.demoBalance, balance: updated.user.balance, useDemoMode: updated.user.useDemoMode });
         }
       } catch (err) {
         setWithdrawError(getDisplayMessage(err, t) || t("deposit.errorWithdraw"));
@@ -184,7 +184,7 @@ export default function DepositPage() {
 
   const depositAmountNum = parseFloat(amount.replace(",", "."));
   const withdrawAmountNum = parseFloat(withdrawAmount.replace(",", "."));
-  const balance = user?.demoBalance ?? 0;
+  const balance = Number(user?.balance ?? 0);
   const depositMax = highHelpEnabled ? 500000 : 50000;
   const depositValid = Number.isFinite(depositAmountNum) && depositAmountNum >= 1 && depositAmountNum <= depositMax;
   const withdrawValid = Number.isFinite(withdrawAmountNum) && withdrawAmountNum >= 1 && withdrawAmountNum <= balance;

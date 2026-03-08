@@ -198,18 +198,31 @@ function PriceChartInner({
 
   const chartMarkers = useMemo(
     () =>
-      markers.map((m) => ({
-        time: Math.floor(m.ts / 1000) as UTCTimestamp,
-        position: ("inBar" as const),
-        price: Number(m.price),
-        color:
-          m.direction === "LONG"
-            ? "rgba(34, 197, 94, 0.72)"
-            : "rgba(239, 68, 68, 0.72)",
-        shape: m.direction === "LONG" ? ("arrowUp" as const) : ("arrowDown" as const),
-        size: 0.45,
-        text: ""
-      })),
+      markers.map((m) => {
+        const isExit = m.kind === "exit";
+        const color =
+          isExit
+            ? m.status === "WIN"
+              ? "rgba(34, 197, 94, 0.85)"
+              : "rgba(239, 68, 68, 0.85)"
+            : m.direction === "LONG"
+              ? "rgba(34, 197, 94, 0.72)"
+              : "rgba(239, 68, 68, 0.72)";
+        const shape = isExit
+          ? ("circle" as const)
+          : m.direction === "LONG"
+            ? ("arrowUp" as const)
+            : ("arrowDown" as const);
+        return {
+          time: Math.floor(m.ts / 1000) as UTCTimestamp,
+          position: "inBar" as const,
+          price: Number(m.price),
+          color,
+          shape,
+          size: isExit ? 0.35 : 0.45,
+          text: ""
+        };
+      }),
     [markers]
   );
 

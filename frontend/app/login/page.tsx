@@ -94,9 +94,14 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <label className="block text-[11px] uppercase tracking-wider text-slate-500">
-              {t("auth.password")}
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-[11px] uppercase tracking-wider text-slate-500">
+                {t("auth.password")}
+              </label>
+              <Link href="/forgot-password" className="text-[11px] text-slate-500 hover:text-accent transition-colors">
+                {t("auth.forgotPassword")}
+              </Link>
+            </div>
             <input
               type="password"
               className={inputClass}
@@ -163,12 +168,6 @@ export default function LoginPage() {
               {t("auth.createDemoAccount")}
             </Link>
           </p>
-          <Link
-            href="/"
-            className="mt-3 block text-center text-xs text-slate-500 hover:text-slate-400 transition-colors"
-          >
-            {t("auth.backHome")}
-          </Link>
         </div>
       </div>
     </div>

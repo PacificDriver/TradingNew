@@ -1,12 +1,14 @@
 import crypto from "crypto";
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import dotenv from "dotenv";
 import { PrismaClient, TradeStatus, TradeDirection } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
+import svgCaptcha from "svg-captcha";
 import UAParser from "ua-parser-js";
 import { WebSocketServer } from "ws";
 import WebSocket from "ws";
@@ -18,6 +20,7 @@ import {
   verifyWebhookPayload
 } from "./highhelp";
 import { notifyBalanceChange } from "./telegram";
+import { isEmailConfigured, sendEmailChangeCode, sendPasswordReset } from "./email";
 
 dotenv.config();
 
@@ -81,6 +84,14 @@ app.post(
   paymentsWebhookHandler
 );
 app.use(express.json());
+
+// Заголовки безопасности
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+  })
+);
 
 // Проверка, что запущен актуальный код (есть маршруты /auth/totp/setup, /sessions)
 app.get("/health", (_req, res) => {
@@ -191,6 +202,53 @@ function rateLimitMiddleware(options: { windowMs: number; max: number }) {
   };
 }
 
+// --- Защита от перебора паролей: блокировка по email после N неудачных попыток ---
+const LOGIN_MAX_FAILED = 5;
+const LOGIN_LOCK_MS = 15 * 60 * 1000; // 15 минут
+const loginFailedStore = new Map<string, { count: number; lockUntil: number }>();
+
+function isLoginLocked(email: string): boolean {
+  const key = email.toLowerCase().trim();
+  const entry = loginFailedStore.get(key);
+  if (!entry) return false;
+  if (Date.now() < entry.lockUntil) return true;
+  loginFailedStore.delete(key);
+  return false;
+}
+
+function recordLoginFailed(email: string): void {
+  const key = email.toLowerCase().trim();
+  const entry = loginFailedStore.get(key) ?? { count: 0, lockUntil: 0 };
+  entry.count += 1;
+  if (entry.count >= LOGIN_MAX_FAILED) {
+    entry.lockUntil = Date.now() + LOGIN_LOCK_MS;
+    entry.count = 0;
+  }
+  loginFailedStore.set(key, entry);
+}
+
+function clearLoginFailed(email: string): void {
+  loginFailedStore.delete(email.toLowerCase().trim());
+}
+
+// --- Капча: in-memory хранилище (id -> текст), TTL 5 мин ---
+const CAPTCHA_TTL_MS = 5 * 60 * 1000;
+const captchaStore = new Map<string, { text: string; expiresAt: number }>();
+
+function createCaptcha(): { id: string; image: string; text: string } {
+  const captcha = svgCaptcha.create({ ignoreChars: "0oO1ilI", noise: 2, color: true });
+  const id = crypto.randomBytes(16).toString("hex");
+  captchaStore.set(id, { text: (captcha.text ?? "").toLowerCase(), expiresAt: Date.now() + CAPTCHA_TTL_MS });
+  return { id, image: captcha.data, text: captcha.text ?? "" };
+}
+
+function verifyCaptcha(id: string, answer: string): boolean {
+  const entry = captchaStore.get(id);
+  if (!entry || Date.now() > entry.expiresAt) return false;
+  captchaStore.delete(id);
+  return answer.trim().toLowerCase() === entry.text;
+}
+
 // --- Аудит баланса: запись в BalanceAuditLog (из транзакции или после) ---
 function createBalanceAudit(
   tx: unknown,
@@ -202,6 +260,7 @@ function createBalanceAudit(
     balanceAfter: number;
     refType?: string;
     refId?: string;
+    refBalanceType?: "demo" | "real";
   }
 ) {
   const client = tx as { balanceAuditLog: { create: (args: { data: Record<string, unknown> }) => Promise<unknown> } };
@@ -213,7 +272,8 @@ function createBalanceAudit(
       balanceBefore: data.balanceBefore,
       balanceAfter: data.balanceAfter,
       refType: data.refType ?? null,
-      refId: data.refId ?? null
+      refId: data.refId ?? null,
+      refBalanceType: data.refBalanceType ?? null
     }
   });
 }
@@ -344,11 +404,25 @@ async function getReferralWithdrawConfig(): Promise<{ viaManager: boolean; manag
   };
 }
 
-async function getTradingConfig(): Promise<{ winPayoutPercent: number }> {
-  const raw = await getAppSetting("win_payout_percent");
-  const n = Number(raw);
+async function getTradingConfig(): Promise<{
+  winPayoutPercent: number;
+  maxActiveTrades: number;
+  minStake: number;
+  maxStake: number;
+}> {
+  const rawPayout = await getAppSetting("win_payout_percent");
+  const n = Number(rawPayout);
+  const rawMax = await getAppSetting("max_active_trades");
+  const maxActive = Number(rawMax);
+  const rawMinStake = await getAppSetting("min_stake");
+  const minStake = Number(rawMinStake);
+  const rawMaxStake = await getAppSetting("max_stake");
+  const maxStake = Number(rawMaxStake);
   return {
-    winPayoutPercent: Number.isFinite(n) && n >= 1 && n <= 200 ? n : 100
+    winPayoutPercent: Number.isFinite(n) && n >= 1 && n <= 200 ? n : 100,
+    maxActiveTrades: Number.isFinite(maxActive) && maxActive >= 0 && maxActive <= 100 ? maxActive : 0,
+    minStake: Number.isFinite(minStake) && minStake >= 0 ? minStake : 1,
+    maxStake: Number.isFinite(maxStake) && maxStake >= 0 ? maxStake : 0
   };
 }
 
@@ -1101,7 +1175,7 @@ function broadcastTradeUpdate(tradeId: number) {
       where: { id: tradeId },
       include: {
         tradingPair: true,
-        user: { select: { id: true, demoBalance: true } }
+        user: { select: { id: true, demoBalance: true, balance: true, useDemoMode: true } }
       }
     });
     if (!trade) return;
@@ -1114,12 +1188,14 @@ function broadcastTradeUpdate(tradeId: number) {
       const baseAmount = Number(trade.amount);
       pnl = -baseAmount;
     }
+    const u = trade.user;
+    const effectiveBalance = u?.useDemoMode ? Number(u.demoBalance) : Number(u?.balance ?? 0);
     const payload = JSON.stringify({
       type: "tradeUpdate",
       trade: {
         ...trade,
         ...(typeof pnl === "number" ? { pnl } : {}),
-        user: trade.user ? { id: trade.user.id, demoBalance: Number(trade.user.demoBalance) } : null
+        user: u ? { id: u.id, demoBalance: Number(u.demoBalance), balance: Number(u.balance), useDemoMode: u.useDemoMode, effectiveBalance } : null
       }
     });
     wss!.clients.forEach((client) => {
@@ -1131,17 +1207,40 @@ function broadcastTradeUpdate(tradeId: number) {
 }
 
 // --- Auth routes ---
-app.post("/auth/register", async (req, res) => {
-  const { email, password, referralCode } = req.body as {
+
+// Капча: получить изображение (для регистрации)
+app.get(
+  "/auth/captcha",
+  rateLimitMiddleware({ windowMs: 60 * 1000, max: 20 }),
+  (_req, res) => {
+    const { id, image } = createCaptcha();
+    res.json({ id, image });
+  }
+);
+
+app.post(
+  "/auth/register",
+  rateLimitMiddleware({ windowMs: 60 * 1000, max: 5 }),
+  async (req, res) => {
+  const { email, password, referralCode, captchaId, captchaAnswer } = req.body as {
     email?: string;
     password?: string;
     referralCode?: string;
+    captchaId?: string;
+    captchaAnswer?: string;
   };
 
   if (!email || !password || password.length < 6) {
     return res
       .status(400)
       .json({ message: "Email and password (min 6 chars) are required" });
+  }
+
+  if (!captchaId || !captchaAnswer) {
+    return res.status(400).json({ message: "Введите символы с картинки (капча)" });
+  }
+  if (!verifyCaptcha(captchaId, captchaAnswer)) {
+    return res.status(400).json({ message: "Неверная капча. Обновите картинку и попробуйте снова." });
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -1167,9 +1266,11 @@ app.post("/auth/register", async (req, res) => {
     data: {
       email,
       password: hash,
+      useDemoMode: true,
       ...(referrerId != null && { referrerId }),
       ...(referralPartnerId != null && { referralPartnerId })
-    }
+    },
+    select: { id: true, email: true, demoBalance: true, balance: true, useDemoMode: true, isAdmin: true }
   });
 
   const session = await createSessionForUser(user.id, req);
@@ -1184,12 +1285,18 @@ app.post("/auth/register", async (req, res) => {
       id: user.id,
       email: user.email,
       demoBalance: user.demoBalance,
+      balance: user.balance,
+      useDemoMode: user.useDemoMode,
       isAdmin: user.isAdmin
     }
   });
 });
 
-app.post("/auth/login", async (req, res) => {
+// Вход: жёсткий лимит по IP + блокировка по email после 5 неудачных попыток
+app.post(
+  "/auth/login",
+  rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 20 }),
+  async (req, res) => {
   const { email, password, totpCode } = req.body as {
     email?: string;
     password?: string;
@@ -1198,14 +1305,21 @@ app.post("/auth/login", async (req, res) => {
   if (!email || !password) {
     return res.status(400).json({ message: "Email and password are required" });
   }
-  const user = await prisma.user.findUnique({ where: { email } });
+  const emailNorm = email.toLowerCase().trim();
+  if (isLoginLocked(emailNorm)) {
+    return res.status(429).json({ message: "Слишком много неудачных попыток. Попробуйте через 15 минут." });
+  }
+  const user = await prisma.user.findUnique({ where: { email: emailNorm } });
   if (!user) {
+    recordLoginFailed(emailNorm);
     return res.status(400).json({ message: "Invalid credentials" });
   }
   const ok = await bcrypt.compare(password, user.password);
   if (!ok) {
+    recordLoginFailed(emailNorm);
     return res.status(400).json({ message: "Invalid credentials" });
   }
+  clearLoginFailed(emailNorm);
   if (user.totpEnabled && user.totpSecret) {
     const code = (totpCode ?? "").toString().replace(/\s/g, "");
     if (!code) {
@@ -1232,6 +1346,8 @@ app.post("/auth/login", async (req, res) => {
       id: user.id,
       email: user.email,
       demoBalance: user.demoBalance,
+      balance: user.balance,
+      useDemoMode: user.useDemoMode,
       isAdmin: user.isAdmin
     }
   });
@@ -1241,6 +1357,82 @@ app.post("/auth/logout", (_req, res) => {
   clearAuthCookie(res);
   return res.json({ ok: true });
 });
+
+// --- Восстановление пароля (запрещено для админов) ---
+const RESET_PASSWORD_EXPIRY_MS = 60 * 60 * 1000; // 1 час
+
+app.post(
+  "/auth/forgot-password",
+  rateLimitMiddleware({ windowMs: 60 * 1000, max: 3 }),
+  async (req, res) => {
+    if (!isEmailConfigured()) {
+      return res.status(503).json({ message: "Восстановление пароля временно недоступно" });
+    }
+    const body = req.body as { email?: string; locale?: string };
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (!email) {
+      return res.status(400).json({ message: "Укажите email" });
+    }
+    const user = await prisma.user.findUnique({
+      where: { email },
+      select: { id: true, isAdmin: true }
+    });
+    if (!user) {
+      return res.json({ ok: true, message: "Если аккаунт существует, на почту отправлена ссылка для сброса пароля." });
+    }
+    if (user.isAdmin) {
+      return res.json({ ok: true, message: "Если аккаунт существует, на почту отправлена ссылка для сброса пароля." });
+    }
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + RESET_PASSWORD_EXPIRY_MS);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { resetPasswordToken: token, resetPasswordExpiresAt: expiresAt }
+    });
+    const locale = (body.locale === "en" || body.locale === "es" ? body.locale : "ru") as "en" | "ru" | "es";
+    const baseUrl = (FRONTEND_ORIGIN.split(",")[0] || "http://localhost:3000").trim().replace(/\/$/, "");
+    const resetLink = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    try {
+      await sendPasswordReset({ to: email, resetLink, locale });
+    } catch (err) {
+      console.error("Send password reset email error:", err);
+      return res.status(500).json({ message: "Не удалось отправить письмо. Попробуйте позже." });
+    }
+    return res.json({ ok: true, message: "Если аккаунт существует, на почту отправлена ссылка для сброса пароля." });
+  }
+);
+
+app.post(
+  "/auth/reset-password",
+  rateLimitMiddleware({ windowMs: 60 * 1000, max: 10 }),
+  async (req, res) => {
+    const body = req.body as { token?: string; newPassword?: string };
+    const token = typeof body.token === "string" ? body.token.trim() : "";
+    const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+    if (!token || !newPassword || newPassword.length < 6) {
+      return res.status(400).json({ message: "Укажите токен и новый пароль (мин. 6 символов)" });
+    }
+    const user = await prisma.user.findFirst({
+      where: {
+        resetPasswordToken: token,
+        resetPasswordExpiresAt: { gt: new Date() }
+      },
+      select: { id: true, isAdmin: true }
+    });
+    if (!user) {
+      return res.status(400).json({ message: "Ссылка недействительна или истекла. Запросите сброс пароля снова." });
+    }
+    if (user.isAdmin) {
+      return res.status(400).json({ message: "Восстановление пароля для этого аккаунта недоступно." });
+    }
+    const hash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hash, resetPasswordToken: null, resetPasswordExpiresAt: null }
+    });
+    return res.json({ ok: true, message: "Пароль успешно изменён. Войдите с новым паролем." });
+  }
+);
 
 // --- Change password ---
 app.post("/auth/change-password", authMiddleware, requireNotBlockedMiddleware, async (req: AuthRequest, res) => {
@@ -1262,6 +1454,90 @@ app.post("/auth/change-password", authMiddleware, requireNotBlockedMiddleware, a
   });
   return res.json({ ok: true });
 });
+
+// --- Change email: request code (sent to new email), confirm with code ---
+const EMAIL_CHANGE_CODE_EXPIRY_MINUTES = 15;
+
+function generateEmailChangeCode(): string {
+  return String(crypto.randomInt(100000, 999999));
+}
+
+app.post(
+  "/auth/request-email-change",
+  authMiddleware,
+  rateLimitMiddleware({ windowMs: 60 * 1000, max: 3 }),
+  async (req: AuthRequest, res) => {
+    if (!isEmailConfigured()) {
+      return res.status(503).json({ message: "Смена email временно недоступна" });
+    }
+    const body = req.body as { newEmail?: string; locale?: string };
+    const newEmail = typeof body.newEmail === "string" ? body.newEmail.trim().toLowerCase() : "";
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!newEmail || !emailRegex.test(newEmail)) {
+      return res.status(400).json({ message: "Укажите корректный новый email" });
+    }
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { id: true, email: true }
+    });
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    if (newEmail === user.email) {
+      return res.status(400).json({ message: "Новый email совпадает с текущим" });
+    }
+    const existing = await prisma.user.findUnique({ where: { email: newEmail } });
+    if (existing) {
+      return res.status(400).json({ message: "Этот email уже занят" });
+    }
+    const code = generateEmailChangeCode();
+    const expiresAt = new Date(Date.now() + EMAIL_CHANGE_CODE_EXPIRY_MINUTES * 60 * 1000);
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: { pendingNewEmail: newEmail, emailChangeCode: code, emailChangeExpiresAt: expiresAt }
+    });
+    const locale = (body.locale === "en" || body.locale === "es" ? body.locale : "ru") as "en" | "ru" | "es";
+    try {
+      await sendEmailChangeCode({ to: newEmail, code, locale });
+    } catch (err) {
+      console.error("Send email change code error:", err);
+      return res.status(500).json({ message: "Не удалось отправить письмо. Попробуйте позже." });
+    }
+    return res.json({ ok: true, message: "Код отправлен на новый email" });
+  }
+);
+
+app.post(
+  "/auth/confirm-email-change",
+  authMiddleware,
+  rateLimitMiddleware({ windowMs: 60 * 1000, max: 10 }),
+  async (req: AuthRequest, res) => {
+    const body = req.body as { newEmail?: string; code?: string };
+    const newEmail = typeof body.newEmail === "string" ? body.newEmail.trim().toLowerCase() : "";
+    const code = typeof body.code === "string" ? body.code.replace(/\s/g, "") : "";
+    if (!newEmail || !code) {
+      return res.status(400).json({ message: "Укажите новый email и код из письма" });
+    }
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      select: { id: true, email: true, pendingNewEmail: true, emailChangeCode: true, emailChangeExpiresAt: true }
+    });
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    if (user.pendingNewEmail !== newEmail || user.emailChangeCode !== code) {
+      return res.status(400).json({ message: "Неверный email или код" });
+    }
+    if (!user.emailChangeExpiresAt || new Date() > user.emailChangeExpiresAt) {
+      await prisma.user.update({
+        where: { id: req.userId },
+        data: { pendingNewEmail: null, emailChangeCode: null, emailChangeExpiresAt: null }
+      });
+      return res.status(400).json({ message: "Код истёк. Запросите новый." });
+    }
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: { email: newEmail, pendingNewEmail: null, emailChangeCode: null, emailChangeExpiresAt: null }
+    });
+    return res.json({ ok: true, email: newEmail });
+  }
+);
 
 // --- TOTP setup (get secret + QR), enable, disable ---
 const APP_NAME = process.env.TOTP_APP_NAME || "Binary Options";
@@ -1540,6 +1816,8 @@ app.get("/me", authMiddlewareWithSession, async (req: AuthRequest, res) => {
       id: true,
       email: true,
       demoBalance: true,
+      balance: true,
+      useDemoMode: true,
       isAdmin: true,
       createdAt: true,
       referralCode: true,
@@ -1564,6 +1842,8 @@ app.get("/me", authMiddlewareWithSession, async (req: AuthRequest, res) => {
       id: user.id,
       email: user.email,
       demoBalance: user.demoBalance,
+      balance: user.balance,
+      useDemoMode: user.useDemoMode,
       isAdmin: user.isAdmin,
       createdAt: user.createdAt,
       referralCode: user.referralCode,
@@ -1576,6 +1856,67 @@ app.get("/me", authMiddlewareWithSession, async (req: AuthRequest, res) => {
     }
   });
 });
+
+// Переключение демо / реальный режим
+app.patch("/me", authMiddlewareWithSession, async (req: AuthRequest, res) => {
+  const userId = Number(req.userId);
+  if (!Number.isInteger(userId)) return res.status(401).json({ message: "Invalid session" });
+  const body = req.body as { useDemoMode?: boolean };
+  const useDemoMode = typeof body.useDemoMode === "boolean" ? body.useDemoMode : undefined;
+  if (useDemoMode === undefined) return res.status(400).json({ message: "useDemoMode required" });
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { useDemoMode },
+    select: { id: true, demoBalance: true, balance: true, useDemoMode: true }
+  });
+  return res.json({ useDemoMode: user.useDemoMode, demoBalance: user.demoBalance, balance: user.balance });
+});
+
+// Начисление средств на демо-баланс (только в демо-режиме)
+app.post(
+  "/demo/add-funds",
+  authMiddleware,
+  rateLimitMiddleware({ windowMs: 60 * 1000, max: 10 }),
+  async (req: AuthRequest, res) => {
+    const userId = Number(req.userId);
+    const body = req.body as { amount?: number };
+    const amount = typeof body.amount === "number" ? body.amount : parseFloat(String(body.amount ?? ""));
+    if (!Number.isFinite(amount) || amount < 1 || amount > 100000) {
+      return res.status(400).json({ message: "Amount must be between 1 and 100000" });
+    }
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, useDemoMode: true, demoBalance: true }
+    });
+    if (!user) return res.status(401).json({ message: "User not found" });
+    if (!user.useDemoMode) {
+      return res.status(400).json({ message: "Add funds only available in demo mode" });
+    }
+    const balanceBefore = Number(user.demoBalance);
+    const balanceAfter = balanceBefore + amount;
+    await prisma.$transaction(async (tx) => {
+      await (tx as PrismaClient).user.update({
+        where: { id: userId },
+        data: { demoBalance: { increment: amount } }
+      });
+      await createBalanceAudit(tx, {
+        userId,
+        type: "demo_add",
+        amount,
+        balanceBefore,
+        balanceAfter,
+        refType: "demo",
+        refId: undefined,
+        refBalanceType: "demo"
+      });
+    });
+    const updated = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { demoBalance: true }
+    });
+    return res.json({ demoBalance: Number(updated?.demoBalance ?? balanceAfter) });
+  }
+);
 
 const SOCIAL_BONUS_AMOUNT = 100;
 
@@ -1784,7 +2125,7 @@ app.get("/ref/click", async (req, res) => {
   return res.json({ ok: true });
 });
 
-// --- Withdraw referral balance to demo balance ---
+// --- Withdraw referral balance to user's effective balance (demo or real) ---
 app.post(
   "/referral/withdraw",
   authMiddleware,
@@ -1792,7 +2133,8 @@ app.post(
   requireNotBlockedMiddleware,
   async (req: AuthRequest, res) => {
     const user = await prisma.user.findUnique({
-      where: { id: req.userId }
+      where: { id: req.userId },
+      select: { id: true, useDemoMode: true, demoBalance: true, balance: true, referralBalance: true, blockedAt: true, withdrawBlockedAt: true }
     });
     if (!user) {
       return res.status(401).json({ message: "User not found" });
@@ -1809,46 +2151,55 @@ app.post(
         message: "Вывод средств временно заблокирован. Обратитесь в поддержку."
       });
     }
+    const withdrawn = Number(user.referralBalance);
+    if (withdrawn <= 0) return res.status(400).json({ message: "Nothing to withdraw" });
+    const balanceType = user.useDemoMode ? "demo" : "real";
     const result = await prisma.$transaction(async (tx) => {
       const affected = await tx.$executeRaw`
-        UPDATE "User" SET "demoBalance" = "demoBalance" + "referralBalance", "referralBalance" = 0
-        WHERE id = ${req.userId} AND "referralBalance" > 0
+        UPDATE "User" SET "referralBalance" = 0 WHERE id = ${req.userId} AND "referralBalance" > 0
       `;
-      if (affected === 0) {
-        return null;
+      if (affected === 0) return null;
+      if (balanceType === "demo") {
+        await (tx as PrismaClient).user.update({
+          where: { id: req.userId! },
+          data: { demoBalance: { increment: withdrawn } }
+        });
+      } else {
+        await (tx as PrismaClient).user.update({
+          where: { id: req.userId! },
+          data: { balance: { increment: withdrawn } }
+        });
       }
       const updated = await tx.user.findUnique({
         where: { id: req.userId },
-        select: { demoBalance: true, referralBalance: true }
+        select: { demoBalance: true, balance: true }
       });
       if (!updated) return null;
-      const withdrawn = Number(user.referralBalance);
+      const balanceBefore = balanceType === "demo" ? Number(user.demoBalance) : Number(user.balance);
+      const balanceAfter = balanceType === "demo" ? Number(updated.demoBalance) : Number(updated.balance);
       await createBalanceAudit(tx, {
         userId: req.userId!,
         type: "referral_transfer",
         amount: withdrawn,
-        balanceBefore: Number(updated.demoBalance) - withdrawn,
-        balanceAfter: Number(updated.demoBalance),
-        refType: "referral"
+        balanceBefore,
+        balanceAfter,
+        refType: "referral",
+        refBalanceType: balanceType
       });
-      return updated;
+      return { balanceAfter, balanceType };
     });
-
-    if (!result) {
-      return res.status(400).json({ message: "Nothing to withdraw" });
-    }
-    const withdrawn = Number(user.referralBalance);
-    const balanceAfter = Number(result.demoBalance);
+    if (!result) return res.status(400).json({ message: "Nothing to withdraw" });
     notifyBalanceChange(prisma, {
       userId: req.userId!,
       type: "referral_transfer",
       amount: withdrawn,
-      balanceBefore: balanceAfter - withdrawn,
-      balanceAfter,
+      balanceBefore: result.balanceAfter - withdrawn,
+      balanceAfter: result.balanceAfter,
       refType: "referral"
     }).catch(() => {});
     return res.json({
-      demoBalance: balanceAfter,
+      demoBalance: result.balanceType === "demo" ? result.balanceAfter : Number(user.demoBalance),
+      balance: result.balanceType === "real" ? result.balanceAfter : Number(user.balance),
       referralBalance: 0,
       withdrawn
     });
@@ -1951,7 +2302,7 @@ app.post(
     }
     const user = await prisma.user.findUnique({
       where: { email: partner.email },
-      select: { id: true, demoBalance: true, blockedAt: true, withdrawBlockedAt: true }
+      select: { id: true, balance: true, blockedAt: true, withdrawBlockedAt: true }
     });
     if (!user) {
       return res.status(400).json({
@@ -1964,6 +2315,7 @@ app.post(
     if (user.withdrawBlockedAt) {
       return res.status(403).json({ message: "Вывод временно заблокирован. Обратитесь в поддержку." });
     }
+    const balanceBefore = Number(user.balance);
     const result = await prisma.$transaction(async (tx) => {
       const affected = await tx.referralPartner.updateMany({
         where: { id: req.referralPartnerId, referralBalance: { gt: 0 } },
@@ -1972,31 +2324,32 @@ app.post(
       if (affected.count === 0) return null;
       await tx.user.update({
         where: { id: user.id },
-        data: { demoBalance: { increment: balance } }
+        data: { balance: { increment: balance } }
       });
       await createBalanceAudit(tx, {
         userId: user.id,
         type: "referral_transfer",
         amount: balance,
-        balanceBefore: Number(user.demoBalance),
-        balanceAfter: Number(user.demoBalance) + balance,
-        refType: "referral"
+        balanceBefore,
+        balanceAfter: balanceBefore + balance,
+        refType: "referral",
+        refBalanceType: "real"
       });
-      return { demoBalance: Number(user.demoBalance) + balance };
+      return { balance: balanceBefore + balance };
     });
     if (!result) return res.status(400).json({ message: "Нечего выводить" });
     notifyBalanceChange(prisma, {
       userId: user.id,
       type: "referral_transfer",
       amount: balance,
-      balanceBefore: Number(user.demoBalance),
-      balanceAfter: result.demoBalance,
+      balanceBefore,
+      balanceAfter: result.balance,
       refType: "referral"
     }).catch(() => {});
     return res.json({
       referralBalance: 0,
       withdrawn: balance,
-      demoBalance: result.demoBalance
+      balance: result.balance
     });
   }
 );
@@ -2693,7 +3046,7 @@ app.post(
     currency?: string;
   };
   const num = Number(amount);
-  const balance = Number(user.demoBalance);
+  const balance = Number(user.balance);
   if (!Number.isFinite(num) || num < 1 || num > balance) {
     return res.status(400).json({ message: "Неверная сумма или недостаточно средств" });
   }
@@ -2709,12 +3062,12 @@ app.post(
   const successUrl = `${base}/payments/webhook`;
   const declineUrl = `${base}/payments/webhook`;
 
-  const balanceBefore = Number(user.demoBalance);
+  const balanceBefore = Number(user.balance);
   try {
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: user.id },
-        data: { demoBalance: { decrement: num } }
+        data: { balance: { decrement: num } }
       });
       await tx.paymentTransaction.create({
         data: {
@@ -2734,7 +3087,8 @@ app.post(
         balanceBefore,
         balanceAfter: balanceBefore - num,
         refType: "payment",
-        refId: paymentId
+        refId: paymentId,
+        refBalanceType: "real"
       });
     });
 
@@ -2787,7 +3141,7 @@ app.post(
   } catch (err) {
     await prisma.user.update({
       where: { id: user.id },
-      data: { demoBalance: { increment: num } }
+      data: { balance: { increment: num } }
     }).catch(() => {});
     const msg = err instanceof Error ? err.message : "Ошибка создания вывода";
     console.error("Payout create error:", err);
@@ -2857,13 +3211,13 @@ async function paymentsWebhookHandler(
     await prisma.$transaction(async (t) => {
       const u = await t.user.findUnique({
         where: { id: tx.userId },
-        select: { demoBalance: true, referralPartnerId: true }
+        select: { balance: true, referralPartnerId: true }
       });
       if (!u) return;
-      balanceBefore = Number(u.demoBalance);
+      balanceBefore = Number(u.balance);
       await t.user.update({
         where: { id: tx.userId },
-        data: { demoBalance: { increment: amount } }
+        data: { balance: { increment: amount } }
       });
       await createBalanceAudit(t, {
         userId: tx.userId,
@@ -2872,7 +3226,8 @@ async function paymentsWebhookHandler(
         balanceBefore,
         balanceAfter: balanceBefore + amount,
         refType: "payment",
-        refId: tx.paymentId
+        refId: tx.paymentId,
+        refBalanceType: "real"
       });
       // FTD: first successful payin — начисляем CPA партнёру
       if (u.referralPartnerId) {
@@ -2918,13 +3273,13 @@ async function paymentsWebhookHandler(
     await prisma.$transaction(async (t) => {
       const u = await t.user.findUnique({
         where: { id: tx.userId },
-        select: { demoBalance: true }
+        select: { balance: true }
       });
       if (!u) return;
-      balanceBefore = Number(u.demoBalance);
+      balanceBefore = Number(u.balance);
       await t.user.update({
         where: { id: tx.userId },
-        data: { demoBalance: { increment: amount } }
+        data: { balance: { increment: amount } }
       });
       await createBalanceAudit(t, {
         userId: tx.userId,
@@ -2933,7 +3288,8 @@ async function paymentsWebhookHandler(
         balanceBefore,
         balanceAfter: balanceBefore + amount,
         refType: "payment",
-        refId: tx.paymentId
+        refId: tx.paymentId,
+        refBalanceType: "real"
       });
     });
     notifyBalanceChange(prisma, {
@@ -3072,7 +3428,7 @@ app.patch(
   authMiddleware,
   adminMiddleware,
   async (req: AuthRequest, res) => {
-    const body = req.body as { winPayoutPercent?: number };
+    const body = req.body as { winPayoutPercent?: number; maxActiveTrades?: number; minStake?: number; maxStake?: number };
     if (typeof body.winPayoutPercent === "number") {
       const val = Math.min(200, Math.max(1, Math.round(body.winPayoutPercent)));
       await prisma.appSetting.upsert({
@@ -3081,8 +3437,214 @@ app.patch(
         update: { value: String(val) }
       });
     }
+    if (typeof body.maxActiveTrades === "number") {
+      const val = Math.min(100, Math.max(0, Math.round(body.maxActiveTrades)));
+      await prisma.appSetting.upsert({
+        where: { key: "max_active_trades" },
+        create: { key: "max_active_trades", value: String(val) },
+        update: { value: String(val) }
+      });
+    }
+    if (typeof body.minStake === "number") {
+      const val = Math.max(0, Math.round(body.minStake));
+      await prisma.appSetting.upsert({
+        where: { key: "min_stake" },
+        create: { key: "min_stake", value: String(val) },
+        update: { value: String(val) }
+      });
+    }
+    if (typeof body.maxStake === "number") {
+      const val = Math.max(0, Math.round(body.maxStake));
+      await prisma.appSetting.upsert({
+        where: { key: "max_stake" },
+        create: { key: "max_stake", value: String(val) },
+        update: { value: String(val) }
+      });
+    }
     const config = await getTradingConfig();
     return res.json(config);
+  }
+);
+
+// --- Admin: аудит баланса ---
+app.get(
+  "/admin/balance-audit",
+  authMiddleware,
+  adminMiddleware,
+  async (req: AuthRequest, res) => {
+    const userId = req.query.userId ? Number(req.query.userId) : undefined;
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const where = userId && Number.isFinite(userId) ? { userId } : {};
+    const [items, total] = await Promise.all([
+      prisma.balanceAuditLog.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: offset
+      }),
+      prisma.balanceAuditLog.count({ where })
+    ]);
+    const userIds = [...new Set(items.map((r) => r.userId))];
+    const users =
+      userIds.length > 0
+        ? await prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, email: true }
+          })
+        : [];
+    const userMap = Object.fromEntries(users.map((u) => [u.id, u.email]));
+    const rows = items.map((r) => ({
+      id: r.id,
+      userId: r.userId,
+      userEmail: userMap[r.userId] ?? null,
+      type: r.type,
+      amount: Number(r.amount),
+      balanceBefore: Number(r.balanceBefore),
+      balanceAfter: Number(r.balanceAfter),
+      refType: r.refType,
+      refId: r.refId,
+      refBalanceType: r.refBalanceType,
+      createdAt: r.createdAt.toISOString()
+    }));
+    return res.json({ items: rows, total });
+  }
+);
+
+// --- Admin: список сделок (все пользователи) ---
+app.get(
+  "/admin/trades",
+  authMiddleware,
+  adminMiddleware,
+  async (req: AuthRequest, res) => {
+    const userId = req.query.userId ? Number(req.query.userId) : undefined;
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const where = userId && Number.isFinite(userId) ? { userId } : {};
+    const [items, total] = await Promise.all([
+      prisma.trade.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        skip: offset,
+        include: {
+          user: { select: { id: true, email: true } },
+          tradingPair: { select: { id: true, symbol: true, name: true } }
+        }
+      }),
+      prisma.trade.count({ where })
+    ]);
+    const rows = items.map((t) => ({
+      id: t.id,
+      userId: t.userId,
+      userEmail: t.user.email,
+      tradingPairId: t.tradingPairId,
+      symbol: t.tradingPair.symbol,
+      pairName: t.tradingPair.name,
+      amount: Number(t.amount),
+      direction: t.direction,
+      status: t.status,
+      entryPrice: Number(t.entryPrice),
+      closePrice: t.closePrice != null ? Number(t.closePrice) : null,
+      balanceType: (t as { balanceType?: string }).balanceType ?? "real",
+      expiresAt: t.expiresAt.toISOString(),
+      createdAt: t.createdAt.toISOString()
+    }));
+    return res.json({ items: rows, total });
+  }
+);
+
+// --- Admin: реферальные партнёры ---
+app.get(
+  "/admin/referral-partners",
+  authMiddleware,
+  adminMiddleware,
+  async (_req: AuthRequest, res) => {
+    const partners = await prisma.referralPartner.findMany({
+      orderBy: { id: "asc" },
+      include: { _count: { select: { referred: true } } }
+    });
+    const rows = partners.map((p) => ({
+      id: p.id,
+      email: p.email,
+      name: p.name,
+      referralCode: p.referralCode,
+      referralClicks: p.referralClicks,
+      referralBalance: Number(p.referralBalance),
+      cpaAmount: p.cpaAmount != null ? Number(p.cpaAmount) : null,
+      referredCount: (p as { _count?: { referred: number } })._count?.referred ?? 0,
+      createdAt: p.createdAt.toISOString()
+    }));
+    return res.json({ partners: rows });
+  }
+);
+
+// --- Admin: дашборд (сводная статистика) ---
+app.get(
+  "/admin/stats",
+  authMiddleware,
+  adminMiddleware,
+  async (_req: AuthRequest, res) => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfWeek.getDate() - 7);
+
+    const [
+      usersTotal,
+      usersToday,
+      tradesToday,
+      tradesWeek,
+      payinsSuccess,
+      payoutsSuccess
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { createdAt: { gte: startOfToday } } }),
+      prisma.trade.count({ where: { createdAt: { gte: startOfToday } } }),
+      prisma.trade.count({ where: { createdAt: { gte: startOfWeek } } }),
+      prisma.paymentTransaction.findMany({
+        where: { type: "payin", status: "success" },
+        select: { amount: true, createdAt: true }
+      }),
+      prisma.paymentTransaction.findMany({
+        where: { type: "payout", status: "success" },
+        select: { amount: true, createdAt: true }
+      })
+    ]);
+
+    const payinsToday = payinsSuccess.filter((p) => p.createdAt >= startOfToday);
+    const payinsWeek = payinsSuccess.filter((p) => p.createdAt >= startOfWeek);
+    const payoutsToday = payoutsSuccess.filter((p) => p.createdAt >= startOfToday);
+    const payoutsWeek = payoutsSuccess.filter((p) => p.createdAt >= startOfWeek);
+
+    const sum = (arr: { amount: { toNumber?: () => number } | unknown }[]) =>
+      arr.reduce((s, p) => s + Number(typeof p.amount === "object" && p.amount != null && "toNumber" in p.amount ? (p.amount as { toNumber: () => number }).toNumber() : p.amount), 0);
+
+    const tradesVolumeToday = await prisma.trade.aggregate({
+      where: { createdAt: { gte: startOfToday } },
+      _sum: { amount: true }
+    });
+    const tradesVolumeWeek = await prisma.trade.aggregate({
+      where: { createdAt: { gte: startOfWeek } },
+      _sum: { amount: true }
+    });
+
+    return res.json({
+      usersTotal,
+      usersToday,
+      tradesToday,
+      tradesWeek,
+      volumeToday: Number(tradesVolumeToday._sum.amount ?? 0),
+      volumeWeek: Number(tradesVolumeWeek._sum.amount ?? 0),
+      payinsCountToday: payinsToday.length,
+      payinsSumToday: sum(payinsToday),
+      payinsCountWeek: payinsWeek.length,
+      payinsSumWeek: sum(payinsWeek),
+      payoutsCountToday: payoutsToday.length,
+      payoutsSumToday: sum(payoutsToday),
+      payoutsCountWeek: payoutsWeek.length,
+      payoutsSumWeek: sum(payoutsWeek)
+    });
   }
 );
 
@@ -3109,6 +3671,7 @@ app.get(
         email: true,
         isAdmin: true,
         demoBalance: true,
+        balance: true,
         createdAt: true,
         blockedAt: true,
         withdrawBlockedAt: true,
@@ -3122,6 +3685,7 @@ app.get(
         return {
           ...rest,
           demoBalance: Number(u.demoBalance),
+          balance: Number(u.balance),
           blockedAt: u.blockedAt?.toISOString() ?? null,
           withdrawBlockedAt: u.withdrawBlockedAt?.toISOString() ?? null,
           tradesCount: _count?.trades ?? 0
@@ -3143,34 +3707,60 @@ app.patch(
     }
     const target = await prisma.user.findUnique({
       where: { id: targetId },
-      select: { id: true, demoBalance: true }
+      select: { id: true, balance: true, demoBalance: true }
     });
     if (!target) {
       return res.status(404).json({ message: "User not found" });
     }
-    const body = req.body as { balance?: number };
+    const body = req.body as { balance?: number; demoBalance?: number };
     const newBalance = typeof body.balance === "number" ? body.balance : parseFloat(String(body.balance ?? ""));
-    if (!Number.isFinite(newBalance) || newBalance < 0) {
-      return res.status(400).json({ message: "Balance must be a non-negative number" });
+    const newDemoBalance = typeof body.demoBalance === "number" ? body.demoBalance : parseFloat(String(body.demoBalance ?? ""));
+    const setBalance = Number.isFinite(newBalance) && newBalance >= 0;
+    const setDemoBalance = Number.isFinite(newDemoBalance) && newDemoBalance >= 0;
+    if (!setBalance && !setDemoBalance) {
+      return res.status(400).json({ message: "balance or demoBalance required (non-negative number)" });
     }
-    const balanceBefore = Number(target.demoBalance);
+    const balanceBefore = Number(target.balance);
+    const demoBalanceBefore = Number(target.demoBalance);
+    const data: { balance?: number; demoBalance?: number } = {};
+    if (setBalance) data.balance = newBalance;
+    if (setDemoBalance) data.demoBalance = newDemoBalance;
     await prisma.$transaction(async (tx) => {
       await (tx as PrismaClient).user.update({
         where: { id: targetId },
-        data: { demoBalance: newBalance }
+        data
       });
-      await createBalanceAudit(tx, {
-        userId: targetId,
-        type: "admin_adjust",
-        amount: newBalance - balanceBefore,
-        balanceBefore,
-        balanceAfter: newBalance,
-        refType: "admin",
-        refId: String(req.userId)
-      });
+      if (setBalance) {
+        await createBalanceAudit(tx, {
+          userId: targetId,
+          type: "admin_adjust",
+          amount: newBalance - balanceBefore,
+          balanceBefore,
+          balanceAfter: newBalance,
+          refType: "admin",
+          refId: String(req.userId),
+          refBalanceType: "real"
+        });
+      }
+      if (setDemoBalance) {
+        await createBalanceAudit(tx, {
+          userId: targetId,
+          type: "admin_adjust",
+          amount: newDemoBalance - demoBalanceBefore,
+          balanceBefore: demoBalanceBefore,
+          balanceAfter: newDemoBalance,
+          refType: "admin",
+          refId: String(req.userId),
+          refBalanceType: "demo"
+        });
+      }
+    });
+    const updated = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: { balance: true, demoBalance: true }
     });
     return res.json({
-      user: { id: targetId, demoBalance: newBalance }
+      user: { id: targetId, balance: Number(updated?.balance ?? target.balance), demoBalance: Number(updated?.demoBalance ?? target.demoBalance) }
     });
   }
 );
@@ -3325,6 +3915,16 @@ app.get("/candles", authMiddleware, requireNotBlockedMiddleware, async (req: Aut
   });
 });
 
+// Публичная конфигурация торговли (процент выплаты, лимит активных сделок) — для отображения на странице торговли
+app.get(
+  "/trading/config",
+  authMiddleware,
+  async (_req: AuthRequest, res) => {
+    const config = await getTradingConfig();
+    return res.json(config);
+  }
+);
+
 // --- Trade opening ---
 app.post(
   "/trade/open",
@@ -3361,10 +3961,16 @@ app.post(
 
     const user = await prisma.user.findUnique({
       where: { id: req.userId },
-      select: { id: true }
+      select: { id: true, useDemoMode: true, demoBalance: true, balance: true }
     });
     if (!user) {
       return res.status(401).json({ message: "User not found" });
+    }
+    const balanceType = user.useDemoMode ? "demo" : "real";
+    const balanceColumn = balanceType === "demo" ? "demoBalance" : "balance";
+    const currentBalance = balanceType === "demo" ? Number(user.demoBalance) : Number(user.balance);
+    if (currentBalance < amount) {
+      return res.status(400).json({ message: "Insufficient balance" });
     }
 
     const pair = await prisma.tradingPair.findUnique({
@@ -3374,17 +3980,40 @@ app.post(
       return res.status(400).json({ message: "Trading pair not found" });
     }
 
+    const config = await getTradingConfig();
+    if (amount < config.minStake) {
+      return res.status(400).json({
+        message: `Минимальная ставка $${config.minStake}`
+      });
+    }
+    if (config.maxStake > 0 && amount > config.maxStake) {
+      return res.status(400).json({
+        message: `Максимальная ставка $${config.maxStake}`
+      });
+    }
+    if (config.maxActiveTrades > 0) {
+      const activeCount = await prisma.trade.count({
+        where: { userId: req.userId, status: TradeStatus.ACTIVE }
+      });
+      if (activeCount >= config.maxActiveTrades) {
+        return res.status(400).json({
+          code: "MAX_ACTIVE_TRADES",
+          message: "Достигнут лимит активных сделок"
+        });
+      }
+    }
+
     const currentPrice =
       priceService.getPrice(pair.id) ?? Number(pair.currentPrice);
 
     const expiresAt = new Date(Date.now() + durationSeconds * 1000);
 
     const result = await prisma.$transaction(async (tx) => {
-      // Атомарное списание: только если баланс >= amount (защита от гонки)
-      const affected = await tx.$executeRaw`
-        UPDATE "User" SET "demoBalance" = "demoBalance" - ${amount}
-        WHERE id = ${user.id} AND "demoBalance" >= ${amount}
-      `;
+      const raw = tx as PrismaClient;
+      const affected =
+        balanceType === "demo"
+          ? await raw.$executeRaw`UPDATE "User" SET "demoBalance" = "demoBalance" - ${amount} WHERE id = ${user.id} AND "demoBalance" >= ${amount}`
+          : await raw.$executeRaw`UPDATE "User" SET "balance" = "balance" - ${amount} WHERE id = ${user.id} AND "balance" >= ${amount}`;
       if (affected === 0) {
         throw new Error("INSUFFICIENT_BALANCE");
       }
@@ -3396,17 +4025,18 @@ app.post(
           amount,
           direction: direction as TradeDirection,
           entryPrice: currentPrice,
-          expiresAt
+          expiresAt,
+          balanceType
         }
       });
 
       const updatedUser = await tx.user.findUnique({
         where: { id: user.id },
-        select: { demoBalance: true }
+        select: { demoBalance: true, balance: true }
       });
       if (!updatedUser) throw new Error("User not found");
 
-      const balanceAfter = Number(updatedUser.demoBalance);
+      const balanceAfter = balanceType === "demo" ? Number(updatedUser.demoBalance) : Number(updatedUser.balance);
       await createBalanceAudit(tx, {
         userId: user.id,
         type: "trade_open",
@@ -3414,7 +4044,8 @@ app.post(
         balanceBefore: balanceAfter + amount,
         balanceAfter,
         refType: "trade",
-        refId: String(trade.id)
+        refId: String(trade.id),
+        refBalanceType: balanceType
       });
 
       return { updatedUser, trade };
@@ -3422,7 +4053,9 @@ app.post(
 
     broadcastTradeUpdate(result.trade.id);
 
-    const balanceAfter = Number(result.updatedUser.demoBalance);
+    const balanceAfter = result.trade.balanceType === "demo"
+      ? Number(result.updatedUser.demoBalance)
+      : Number(result.updatedUser.balance);
     notifyBalanceChange(prisma, {
       userId: user.id,
       type: "trade_open",
@@ -3435,7 +4068,8 @@ app.post(
 
     return res.json({
       trade: result.trade,
-      balance: balanceAfter
+      balance: balanceAfter,
+      balanceType
     });
   } catch (err) {
     if (err instanceof Error && err.message === "INSUFFICIENT_BALANCE") {
@@ -3533,16 +4167,19 @@ async function settleExpiredTrades() {
         );
         const payout =
           Number(trade.amount) * (1 + winPayoutPercent / 100);
+        const balanceType = (trade as { balanceType?: string }).balanceType === "demo" ? "demo" : "real";
         const u = await tx.user.findUnique({
           where: { id: trade.userId },
-          select: { demoBalance: true }
+          select: { demoBalance: true, balance: true }
         });
         if (u) {
-          const balanceBefore = Number(u.demoBalance);
+          const balanceBefore = balanceType === "demo" ? Number(u.demoBalance) : Number(u.balance);
           const balanceAfter = balanceBefore + payout;
           await tx.user.update({
             where: { id: trade.userId },
-            data: { demoBalance: { increment: payout } }
+            data: balanceType === "demo"
+              ? { demoBalance: { increment: payout } }
+              : { balance: { increment: payout } }
           });
           await createBalanceAudit(tx, {
             userId: trade.userId,
@@ -3551,7 +4188,8 @@ async function settleExpiredTrades() {
             balanceBefore,
             balanceAfter,
             refType: "trade",
-            refId: String(trade.id)
+            refId: String(trade.id),
+            refBalanceType: balanceType
           });
           notifyBalanceChange(prisma, {
             userId: trade.userId,
