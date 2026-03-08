@@ -63,7 +63,7 @@ Trading/
 | POST | `/auth/logout` | — | очистка cookie |
 | GET | `/me` | JWT | текущий user и balance |
 | GET | `/trading-pairs` | JWT | список пар с текущими ценами |
-| GET | `/candles` | JWT | OHLC: query `pairId`, `timeframe` (1s,30s,1m,5m,10m,15m,1h,2h,5h), `limit` |
+| GET | `/candles` | JWT | OHLC: query `pairId`, `timeframe` (1s,30s,1m,5m,10m,15m,1h,2h,5h), `limit` — 30 дней, макс 3000 свечей |
 | POST | `/trade/open` | JWT | body: `tradingPairId`, `amount`, `direction` (LONG/SHORT), `durationSeconds` (min 5) |
 | GET | `/trades/active` | JWT | активные сделки |
 | GET | `/trades/completed` | JWT | завершённые (WIN/LOSS) |

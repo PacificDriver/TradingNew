@@ -615,7 +615,11 @@ type Timeframe =
   | "2h"
   | "5h";
 
-const MAX_CHART_HOURS = 5;
+/** Глубина истории: 30 дней */
+const MAX_CHART_HOURS = 720;
+
+/** Лимит свечей в памяти и в ответе API — чтобы не лагало при мелких ТФ */
+const MAX_CANDLES_PER_TIMEFRAME = 3000;
 
 function timeframeToSeconds(tf: Timeframe): number {
   switch (tf) {
@@ -642,10 +646,11 @@ function timeframeToSeconds(tf: Timeframe): number {
   }
 }
 
-/** Максимум свечей для хранения 5 часов истории по таймфрейму */
-function maxCandlesFor5h(tf: Timeframe): number {
+/** Максимум свечей: 30 дней по ТФ, но не больше MAX_CANDLES_PER_TIMEFRAME */
+function maxCandlesForChart(tf: Timeframe): number {
   const sec = timeframeToSeconds(tf);
-  return Math.ceil((MAX_CHART_HOURS * 3600) / sec);
+  const for30Days = Math.ceil((MAX_CHART_HOURS * 3600) / sec);
+  return Math.min(for30Days, MAX_CANDLES_PER_TIMEFRAME);
 }
 
 type Candle = {
@@ -693,7 +698,7 @@ class CandleService {
       }
     }
     merged.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-    const maxCandles = maxCandlesFor5h(timeframe);
+    const maxCandles = maxCandlesForChart(timeframe);
     const cutoffMs = Date.now() - MAX_CHART_HOURS * 3600 * 1000;
     const trimmed = merged.filter((c) => c.startTime.getTime() >= cutoffMs);
     this.candles.set(key, trimmed.slice(-maxCandles));
@@ -745,7 +750,7 @@ class CandleService {
         close: price
       };
       list.push(candle);
-      const maxCandles = maxCandlesFor5h(timeframe);
+      const maxCandles = maxCandlesForChart(timeframe);
       const cutoffMs = ts.getTime() - MAX_CHART_HOURS * 3600 * 1000;
       const trimmed = list.filter((c) => c.startTime.getTime() >= cutoffMs);
       if (trimmed.length < list.length) {
@@ -3900,9 +3905,10 @@ app.get("/candles", authMiddleware, requireNotBlockedMiddleware, async (req: Aut
     return res.status(400).json({ message: "Invalid timeframe" });
   }
 
-  const parsedLimit = Number.parseInt(limit ?? "200", 10);
+  const maxLimit = maxCandlesForChart(tf);
+  const parsedLimit = Math.min(maxLimit, Math.max(1, Number.parseInt(limit ?? "200", 10) || 200));
 
-  const candles = candleService.getCandles(parsedPairId, tf, parsedLimit || 200);
+  const candles = candleService.getCandles(parsedPairId, tf, parsedLimit);
 
   return res.json({
     candles: candles.map((c) => ({
