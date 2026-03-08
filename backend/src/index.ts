@@ -1647,15 +1647,17 @@ app.post("/auth/totp/enable", authMiddleware, requireNotBlockedMiddleware, async
   if (!valid) {
     return res.status(400).json({ message: "Invalid code" });
   }
+  const userId = req.userId;
+  if (userId == null) return res.status(401).json({ message: "Unauthorized" });
   await prisma.user.update({
-    where: { id: req.userId },
+    where: { id: userId },
     data: { totpSecret: (secret as string).trim(), totpEnabled: true }
   });
   const plainCodes = generateBackupCodes();
   for (const plain of plainCodes) {
     const codeHash = await bcrypt.hash(plain.replace(/-/g, ""), 10);
     await prisma.totpBackupCode.create({
-      data: { userId: req.userId, codeHash }
+      data: { userId, codeHash }
     });
   }
   return res.json({ ok: true, backupCodes: plainCodes });
