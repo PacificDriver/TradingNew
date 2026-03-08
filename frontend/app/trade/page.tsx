@@ -126,6 +126,7 @@ function TradePageContent() {
   /** Есть ли ещё история слева (30 дней); сбрасывается при смене пары/таймфрейма */
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
   const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
+  const [candlesRetryCount, setCandlesRetryCount] = useState(0);
   const CANDLES_PAGE_SIZE = 200;
   const candlesRef = useRef(candles);
   candlesRef.current = candles;
@@ -394,7 +395,7 @@ function TradePageContent() {
       if (timeoutId) clearTimeout(timeoutId);
       setCandlesLoading(false);
     };
-  }, [authChecked, token, selectedPairId, timeframe, candleLimitFor5h, t, CANDLES_PAGE_SIZE]);
+  }, [authChecked, token, selectedPairId, timeframe, candleLimitFor5h, t, CANDLES_PAGE_SIZE, candlesRetryCount]);
 
   // Подгрузка старой истории порцией при скролле влево (before = первая свеча)
   const loadMoreCandles = useCallback(() => {
@@ -748,6 +749,8 @@ function TradePageContent() {
               containerClassName="rounded-xl glass h-full"
               onLoadMoreHistory={loadMoreCandles}
               hasMoreHistory={hasMoreHistory}
+              onRetry={() => { setCandlesError(null); setCandlesRetryCount((c) => c + 1); }}
+              retryLabel={t("common.retry")}
             />
           </div>
         </div>
@@ -964,6 +967,8 @@ function TradePageContent() {
                 containerClassName="rounded-none bg-transparent border-0 shadow-none xl:rounded-xl xl:glass"
                 onLoadMoreHistory={loadMoreCandles}
                 hasMoreHistory={hasMoreHistory}
+                onRetry={() => { setCandlesError(null); setCandlesRetryCount((c) => c + 1); }}
+                retryLabel={t("common.retry")}
               />
               {lastSettledResult && (
                 <ChartResultFeedback

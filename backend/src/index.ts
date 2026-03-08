@@ -1312,10 +1312,11 @@ app.post(
   "/auth/login",
   rateLimitMiddleware({ windowMs: 15 * 60 * 1000, max: 20 }),
   async (req, res) => {
-  const { email, password, totpCode } = req.body as {
+  const { email, password, totpCode, backupCode } = req.body as {
     email?: string;
     password?: string;
     totpCode?: string;
+    backupCode?: string;
   };
   if (!email || !password) {
     return res.status(400).json({ message: "Email and password are required" });
@@ -1336,18 +1337,39 @@ app.post(
   }
   clearLoginFailed(emailNorm);
   if (user.totpEnabled && user.totpSecret) {
-    const code = (totpCode ?? "").toString().replace(/\s/g, "");
-    if (!code) {
-      return res.status(400).json({ message: "TOTP code required", requiresTotp: true });
-    }
-    const valid = speakeasy.totp.verify({
-      secret: user.totpSecret,
-      encoding: "base32",
-      token: code,
-      window: 1
-    });
-    if (!valid) {
-      return res.status(400).json({ message: "Invalid TOTP code", requiresTotp: true });
+    const totpInput = (totpCode ?? "").toString().replace(/\s/g, "");
+    const backupInput = (backupCode ?? "").toString().replace(/\s/g, "").replace(/-/g, "");
+    const totpValid =
+      totpInput.length >= 6 &&
+      speakeasy.totp.verify({
+        secret: user.totpSecret,
+        encoding: "base32",
+        token: totpInput,
+        window: 1
+      });
+    if (totpValid) {
+      // OK, proceed to login
+    } else if (backupInput.length >= 6) {
+      const allBackup = await prisma.totpBackupCode.findMany({
+        where: { userId: user.id, usedAt: null }
+      });
+      let matched = false;
+      for (const row of allBackup) {
+        const match = await bcrypt.compare(backupInput, row.codeHash);
+        if (match) {
+          await prisma.totpBackupCode.update({
+            where: { id: row.id },
+            data: { usedAt: new Date() }
+          });
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        return res.status(400).json({ message: "Invalid backup code", requiresTotp: true });
+      }
+    } else {
+      return res.status(400).json({ message: "TOTP or backup code required", requiresTotp: true });
     }
   }
   const session = await createSessionForUser(user.id, req);
@@ -1595,6 +1617,21 @@ app.get("/auth/totp/setup", authMiddleware, requireNotBlockedMiddleware, async (
   }
 });
 
+const BACKUP_CODES_COUNT = 8;
+const BACKUP_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function generateBackupCodes(): string[] {
+  const codes: string[] = [];
+  for (let i = 0; i < BACKUP_CODES_COUNT; i++) {
+    let part = "";
+    for (let j = 0; j < 4; j++) {
+      part += BACKUP_CODE_CHARS.charAt(Math.floor(Math.random() * BACKUP_CODE_CHARS.length));
+    }
+    codes.push(`${part}-${part}`);
+  }
+  return codes;
+}
+
 app.post("/auth/totp/enable", authMiddleware, requireNotBlockedMiddleware, async (req: AuthRequest, res) => {
   const { secret, code } = req.body as { secret?: string; code?: string };
   if (!secret || !code) {
@@ -1614,7 +1651,14 @@ app.post("/auth/totp/enable", authMiddleware, requireNotBlockedMiddleware, async
     where: { id: req.userId },
     data: { totpSecret: (secret as string).trim(), totpEnabled: true }
   });
-  return res.json({ ok: true });
+  const plainCodes = generateBackupCodes();
+  for (const plain of plainCodes) {
+    const codeHash = await bcrypt.hash(plain.replace(/-/g, ""), 10);
+    await prisma.totpBackupCode.create({
+      data: { userId: req.userId, codeHash }
+    });
+  }
+  return res.json({ ok: true, backupCodes: plainCodes });
 });
 
 app.post("/auth/totp/disable", authMiddleware, requireNotBlockedMiddleware, async (req: AuthRequest, res) => {
@@ -1676,6 +1720,22 @@ app.get("/sessions", authMiddleware, requireNotBlockedMiddleware, async (req: Au
     return res.status(500).json({ message: "Ошибка загрузки сессий" });
   }
 });
+
+app.delete(
+  "/sessions/others",
+  authMiddlewareWithSession,
+  requireNotBlockedMiddleware,
+  async (req: AuthRequest, res) => {
+    const currentId = req.sessionId;
+    if (currentId == null) {
+      return res.status(400).json({ message: "Current session unknown" });
+    }
+    const deleted = await prisma.session.deleteMany({
+      where: { userId: req.userId, id: { not: currentId } }
+    });
+    return res.json({ revoked: deleted.count });
+  }
+);
 
 app.delete("/sessions/:id", authMiddleware, requireNotBlockedMiddleware, async (req: AuthRequest, res) => {
   const id = Number.parseInt(req.params.id, 10);
@@ -3673,27 +3733,35 @@ app.get(
   }
 );
 
-// --- Admin: список пользователей ---
+// --- Admin: список пользователей (пагинация: limit до 100, offset) ---
+const ADMIN_USERS_PAGE_SIZE = 100;
 app.get(
   "/admin/users",
   authMiddleware,
   adminMiddleware,
-  async (_req: AuthRequest, res) => {
-    const users = await prisma.user.findMany({
-      orderBy: { id: "asc" },
-      select: {
-        id: true,
-        email: true,
-        isAdmin: true,
-        demoBalance: true,
-        balance: true,
-        createdAt: true,
-        blockedAt: true,
-        withdrawBlockedAt: true,
-        blockReason: true,
-        _count: { select: { trades: true } }
-      }
-    });
+  async (req: AuthRequest, res) => {
+    const limit = Math.min(ADMIN_USERS_PAGE_SIZE, Math.max(1, Number(req.query.limit) || ADMIN_USERS_PAGE_SIZE));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        orderBy: { id: "asc" },
+        skip: offset,
+        take: limit,
+        select: {
+          id: true,
+          email: true,
+          isAdmin: true,
+          demoBalance: true,
+          balance: true,
+          createdAt: true,
+          blockedAt: true,
+          withdrawBlockedAt: true,
+          blockReason: true,
+          _count: { select: { trades: true } }
+        }
+      }),
+      prisma.user.count()
+    ]);
     return res.json({
       users: users.map((u) => {
         const { _count, ...rest } = u as typeof u & { _count?: { trades: number } };
@@ -3705,7 +3773,8 @@ app.get(
           withdrawBlockedAt: u.withdrawBlockedAt?.toISOString() ?? null,
           tradesCount: _count?.trades ?? 0
         };
-      })
+      }),
+      total
     });
   }
 );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthGuard } from "../../components/AuthGuard";
@@ -112,15 +112,20 @@ export default function AdminPage() {
 
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
 
-  // Users
+  // Users (пагинация по 100, подгрузка при скролле)
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [usersTotal, setUsersTotal] = useState(0);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [usersLoadingMore, setUsersLoadingMore] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [actingUserId, setActingUserId] = useState<number | null>(null);
   const [balanceEditId, setBalanceEditId] = useState<number | null>(null);
   const [balanceEditValue, setBalanceEditValue] = useState("");
   const [onlineUserIds, setOnlineUserIds] = useState<number[]>([]);
   const [filterOnlineOnly, setFilterOnlineOnly] = useState(false);
+  const usersScrollRef = useRef<HTMLDivElement>(null);
+  const usersSentinelRef = useRef<HTMLDivElement>(null);
+  const ADMIN_USERS_PAGE_SIZE = 100;
 
   // Pairs
   const [pairs, setPairs] = useState<TradingPairRow[]>([]);
@@ -188,12 +193,46 @@ export default function AdminPage() {
     if (activeTab === "users") {
       setUsersError(null);
       setUsersLoading(true);
-      apiFetch<{ users: AdminUser[] }>("/admin/users", { headers: authHeaders(token) })
-        .then((data) => setUsers(data.users ?? []))
+      const params = new URLSearchParams({ limit: String(ADMIN_USERS_PAGE_SIZE), offset: "0" });
+      apiFetch<{ users: AdminUser[]; total: number }>(`/admin/users?${params}`, { headers: authHeaders(token) })
+        .then((data) => {
+          setUsers(data.users ?? []);
+          setUsersTotal(data.total ?? 0);
+        })
         .catch((e) => setUsersError((e as Error).message))
         .finally(() => setUsersLoading(false));
     }
   }, [authChecked, user?.isAdmin, token, activeTab]);
+
+  const loadMoreUsers = useCallback(() => {
+    if (!token || usersLoadingMore || users.length >= usersTotal || users.length === 0) return;
+    setUsersLoadingMore(true);
+    const params = new URLSearchParams({
+      limit: String(ADMIN_USERS_PAGE_SIZE),
+      offset: String(users.length)
+    });
+    apiFetch<{ users: AdminUser[]; total: number }>(`/admin/users?${params}`, { headers: authHeaders(token) })
+      .then((data) => {
+        const list = data.users ?? [];
+        setUsers((prev) => (list.length ? [...prev, ...list] : prev));
+        if ((data.total ?? 0) > 0) setUsersTotal(data.total!);
+      })
+      .finally(() => setUsersLoadingMore(false));
+  }, [token, usersLoadingMore, users.length, usersTotal]);
+
+  useEffect(() => {
+    const sentinel = usersSentinelRef.current;
+    if (activeTab !== "users" || !sentinel || users.length >= usersTotal || usersTotal === 0) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0]?.isIntersecting) return;
+        loadMoreUsers();
+      },
+      { root: null, rootMargin: "200px", threshold: 0 }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeTab, users.length, usersTotal, loadMoreUsers]);
 
   useEffect(() => {
     if (!authChecked || !user?.isAdmin || !token) return;
@@ -756,9 +795,12 @@ export default function AdminPage() {
                   {t("admin.noOnlineUsers")}
                 </div>
               ) : (
-              <div className="overflow-x-auto">
+              <div
+                ref={usersScrollRef}
+                className="overflow-x-auto overflow-y-auto max-h-[min(70vh,800px)]"
+              >
                 <table className="w-full min-w-[640px] text-sm">
-                  <thead className="border-b border-slate-700/60">
+                  <thead className="border-b border-slate-700/60 sticky top-0 bg-slate-900/95 backdrop-blur z-10">
                     <tr>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">ID</th>
                       <th className="px-4 py-3 text-left text-slate-500 font-medium">Email</th>
@@ -891,6 +933,18 @@ export default function AdminPage() {
                     ))}
                   </tbody>
                 </table>
+                {users.length < usersTotal && (
+                  <div ref={usersSentinelRef} className="h-4 flex items-center justify-center py-4">
+                    {usersLoadingMore && (
+                      <span className="text-slate-500 text-sm">{t("admin.loading")}</span>
+                    )}
+                  </div>
+                )}
+                {users.length > 0 && users.length < usersTotal && !usersLoadingMore && (
+                  <div className="py-2 text-center text-slate-500 text-xs">
+                    {users.length} / {usersTotal}
+                  </div>
+                )}
               </div>
               );
             })()}

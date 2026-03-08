@@ -61,6 +61,7 @@ model User {
   referralClicks     Int             @default(0)
   totpSecret         String?
   totpEnabled        Boolean  @default(false)
+  totpBackupCodes    TotpBackupCode[]
   blockedAt          DateTime?  // полная блокировка: торги и вывод запрещены
   withdrawBlockedAt  DateTime?  // частичная: вывод запрещён, торги разрешены
   blockReason        String?
@@ -88,6 +89,16 @@ model Session {
   osShort     String?
   firstSeenAt DateTime @default(now())
   lastSeenAt  DateTime @updatedAt
+  @@index([userId])
+}
+
+model TotpBackupCode {
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    // bcrypt hash of the backup code
+  usedAt    DateTime? // null = not used
+  createdAt DateTime @default(now())
   @@index([userId])
 }
 

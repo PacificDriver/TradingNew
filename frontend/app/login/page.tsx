@@ -35,8 +35,12 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const body: { email: string; password: string; totpCode?: string } = { email, password };
-      if (requiresTotp) body.totpCode = totpToken.replace(/\s/g, "");
+      const body: { email: string; password: string; totpCode?: string; backupCode?: string } = { email, password };
+      if (requiresTotp && totpToken.trim()) {
+        const cleaned = totpToken.replace(/\s/g, "").replace(/-/g, "");
+        if (cleaned.length === 6 && /^\d+$/.test(cleaned)) body.totpCode = cleaned;
+        else body.backupCode = cleaned;
+      }
       const apiBase = "/api-proxy";
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (apiBase.includes("ngrok")) headers["ngrok-skip-browser-warning"] = "1";
@@ -138,10 +142,11 @@ export default function LoginPage() {
                 className="mt-1.5 input-glass text-center text-lg tracking-[0.4em] font-mono placeholder:text-slate-500"
                 placeholder="000000"
                 value={totpToken}
-                onChange={(e) => setTotpToken(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                maxLength={6}
+                onChange={(e) => setTotpToken(e.target.value.replace(/[^\dA-Za-z-]/g, "").slice(0, 9))}
+                maxLength={9}
                 autoFocus
               />
+              <p className="text-[11px] text-slate-500 mt-1.5">{t("auth.totpOrBackupHint")}</p>
             </div>
           )}
           {error && (

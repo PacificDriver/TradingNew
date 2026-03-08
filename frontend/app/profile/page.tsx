@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthGuard } from "../../components/AuthGuard";
 import { OsIcon } from "../../components/OsIcon";
 import { SocialLink } from "../../components/SocialLink";
+import { ProfileSkeleton, TableSkeleton } from "../../components/Skeleton";
 import { useTradingStore, type Trade } from "../../store/useTradingStore";
 import { apiFetch, authHeaders, isAuthError, getDisplayMessage } from "../../lib/api";
 import { useLocale } from "../../lib/i18n";
@@ -129,6 +130,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<MeResponse["user"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [showAllTrades, setShowAllTrades] = useState(false);
   const [activeSection, setActiveSection] = useState<ProfileSection>("overview");
   // Security: change password
@@ -142,11 +144,14 @@ export default function ProfilePage() {
   const [totpCode, setTotpCode] = useState("");
   const [totpMsg, setTotpMsg] = useState<{ type: "error" | "success"; text: string } | null>(null);
   const [totpLoading, setTotpLoading] = useState(false);
+  const [backupCodesJustEnabled, setBackupCodesJustEnabled] = useState<string[] | null>(null);
+  const [backupCodesCopied, setBackupCodesCopied] = useState(false);
   // Security: sessions
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<number | null>(null);
+  const [revokingOthers, setRevokingOthers] = useState(false);
   // Смена email
   const [newEmail, setNewEmail] = useState("");
   const [emailCode, setEmailCode] = useState("");
@@ -202,28 +207,9 @@ export default function ProfilePage() {
     setCompletedTrades,
     mergeTradeHistory,
     clearAuth,
-    router
+    router,
+    retryCount
   ]);
-
-  useEffect(() => {
-    if (activeSection !== "security" || !token) return;
-    let cancelled = false;
-    setSessionsError(null);
-    setSessionsLoading(true);
-    (async () => {
-      try {
-        const data = await apiFetch<SessionsResponse>("/sessions", { headers: authHeaders(token) });
-        if (!cancelled) setSessions(data.sessions ?? []);
-      } catch (e) {
-        if (!cancelled) setSessionsError((e as Error).message);
-      } finally {
-        if (!cancelled) setSessionsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeSection, token]);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -280,7 +266,7 @@ export default function ProfilePage() {
     }
     setTotpLoading(true);
     try {
-      await apiFetch("/auth/totp/enable", {
+      const data = await apiFetch<{ ok: boolean; backupCodes?: string[] }>("/auth/totp/enable", {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify({ secret: totpSetup.secret, code })
@@ -289,12 +275,51 @@ export default function ProfilePage() {
       setTotpSetup(null);
       setTotpCode("");
       setProfile((p) => (p ? { ...p, totpEnabled: true } : null));
+      if (data.backupCodes?.length) setBackupCodesJustEnabled(data.backupCodes);
     } catch (err) {
       setTotpMsg({ type: "error", text: (err as Error).message });
     } finally {
       setTotpLoading(false);
     }
   };
+
+  const copyBackupCodes = () => {
+    if (!backupCodesJustEnabled?.length) return;
+    const text = backupCodesJustEnabled.join("\n");
+    navigator.clipboard?.writeText(text).then(() => {
+      setBackupCodesCopied(true);
+      setTimeout(() => setBackupCodesCopied(false), 2000);
+    });
+  };
+
+  const loadSessions = useCallback(() => {
+    if (!token) return;
+    setSessionsError(null);
+    setSessionsLoading(true);
+    apiFetch<SessionsResponse>("/sessions", { headers: authHeaders(token) })
+      .then((data) => setSessions(data.sessions ?? []))
+      .catch((e) => setSessionsError((e as Error).message))
+      .finally(() => setSessionsLoading(false));
+  }, [token]);
+
+  const handleRevokeOtherSessions = async () => {
+    if (!token || !window.confirm(t("profile.logOutEverywhereConfirm"))) return;
+    setRevokingOthers(true);
+    try {
+      await apiFetch("/sessions/others", { method: "DELETE", headers: authHeaders(token) });
+      await loadSessions();
+      setTotpMsg({ type: "success", text: t("profile.revokeOthersDone") });
+    } catch {
+      // ignore
+    } finally {
+      setRevokingOthers(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection !== "security" || !token) return;
+    loadSessions();
+  }, [activeSection, token, loadSessions]);
 
   const handleTotpDisable = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -445,14 +470,17 @@ export default function ProfilePage() {
         </div>
 
         {loading && (
-          <div className="card py-12 text-center text-slate-400 rounded-xl animate-fade-in animate-shimmer">
-            {t("profile.totpLoading")}
+          <div className="animate-fade-in">
+            <ProfileSkeleton />
           </div>
         )}
 
         {error && (
-          <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-4 mb-6">
-            <p className="text-sm text-red-400">{error}</p>
+          <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-4 mb-6 flex flex-col sm:flex-row sm:items-center gap-3">
+            <p className="text-sm text-red-400 flex-1">{error}</p>
+            <button type="button" onClick={() => { setError(null); setLoading(true); setRetryCount((c) => c + 1); }} className="rounded-lg border border-slate-600 bg-slate-800/80 px-3 py-2 text-sm text-slate-300 hover:bg-slate-700/80 shrink-0">
+              {t("common.retry")}
+            </button>
           </div>
         )}
 
@@ -944,16 +972,70 @@ export default function ProfilePage() {
                     )}
                   </div>
 
-                  {/* История сессий / устройств */}
+                  {/* Резервные коды 2FA (показать один раз после включения) */}
+                  {backupCodesJustEnabled && backupCodesJustEnabled.length > 0 && (
+                    <div className="glass-panel overflow-hidden border-amber-500/30 border">
+                      <div className="border-b border-slate-700/60 px-4 sm:px-6 py-3">
+                        <h3 className="text-[11px] uppercase tracking-[0.18em] text-amber-400/90">{t("profile.backupCodesTitle")}</h3>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{t("profile.backupCodesHint")}</p>
+                      </div>
+                      <div className="px-4 sm:px-6 py-4">
+                        <div className="grid grid-cols-2 gap-2 font-mono text-sm text-slate-200 mb-4">
+                          {backupCodesJustEnabled.map((code, i) => (
+                            <span key={i} className="rounded bg-slate-800/80 px-3 py-2">
+                              {code}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={copyBackupCodes}
+                            className="rounded-lg border border-slate-600 bg-slate-800/80 hover:bg-slate-700/80 px-3 py-2 text-sm font-medium text-slate-300"
+                          >
+                            {backupCodesCopied ? t("profile.backupCodesCopied") : t("profile.backupCodesCopy")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setBackupCodesJustEnabled(null)}
+                            className="rounded-lg border border-slate-600 px-3 py-2 text-sm font-medium text-slate-400"
+                          >
+                            {t("common.close")}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* История входов (сессии) */}
                   <div className="glass-panel overflow-hidden">
-                    <div className="border-b border-slate-700/60 px-4 sm:px-6 py-3">
-                      <h3 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{t("profile.sessionsTitle")}</h3>
-                      <p className="text-[10px] text-slate-500 mt-0.5">{t("profile.sessionsHint")}</p>
+                    <div className="border-b border-slate-700/60 px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div>
+                        <h3 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{t("profile.loginHistoryTitle")}</h3>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{t("profile.loginHistoryHint")}</p>
+                      </div>
+                      {sessions.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={handleRevokeOtherSessions}
+                          disabled={revokingOthers}
+                          className="shrink-0 rounded-lg border border-red-500/40 bg-red-950/30 hover:bg-red-950/50 px-3 py-2 text-[11px] font-medium text-red-400 disabled:opacity-50"
+                        >
+                          {revokingOthers ? "…" : t("profile.logOutEverywhere")}
+                        </button>
+                      )}
                     </div>
                     {sessionsLoading ? (
-                      <div className="py-12 text-center text-slate-500 text-sm">{t("profile.sessionsLoading")}</div>
+                      <div className="p-4 sm:p-6">
+                        <TableSkeleton rows={4} />
+                      </div>
                     ) : sessionsError ? (
-                      <div className="py-8 px-4 text-center text-red-400 text-sm">{sessionsError}</div>
+                      <div className="py-8 px-4 text-center">
+                        <p className="text-red-400 text-sm mb-3">{sessionsError}</p>
+                        <button type="button" onClick={loadSessions} className="rounded-lg border border-slate-600 bg-slate-800/80 px-3 py-2 text-sm text-slate-300 hover:bg-slate-700/80">
+                          {t("common.retry")}
+                        </button>
+                      </div>
                     ) : sessions.length === 0 ? (
                       <div className="py-10 px-4 text-center text-slate-500 text-sm">{t("profile.noSessions")}</div>
                     ) : (

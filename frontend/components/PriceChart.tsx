@@ -71,6 +71,10 @@ type Props = {
   onLoadMoreHistory?: () => void;
   /** Есть ли ещё данные в прошлом (не вызывать onLoadMoreHistory если false) */
   hasMoreHistory?: boolean;
+  /** При ошибке загрузки — кнопка «Повторить» вызовет этот callback */
+  onRetry?: () => void;
+  /** Текст кнопки повтора (если передан onRetry) */
+  retryLabel?: string;
 };
 
 const DARK_THEME = {
@@ -130,7 +134,9 @@ function PriceChartInner({
   showBB = false,
   containerClassName,
   onLoadMoreHistory,
-  hasMoreHistory = true
+  hasMoreHistory = true,
+  onRetry,
+  retryLabel = "Повторить"
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -641,6 +647,15 @@ function PriceChartInner({
         <p className="mt-1 text-xs text-slate-500">
           Смените пару или таймфрейм для повтора
         </p>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="mt-4 rounded-lg border border-slate-600 bg-slate-800/80 px-4 py-2 text-sm text-slate-300 hover:bg-slate-700/80"
+          >
+            {retryLabel}
+          </button>
+        )}
       </div>
     </div>
   ) : !candles.length ? (
