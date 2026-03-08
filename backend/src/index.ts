@@ -615,7 +615,10 @@ type Timeframe =
   | "2h"
   | "5h";
 
+/** Окно в памяти для real-time (не грузим 30 дней в RAM) */
 const MAX_CHART_HOURS = 5;
+/** Хранение истории в БД (дней); старые удаляются */
+const CHART_HISTORY_DAYS = 30;
 
 function timeframeToSeconds(tf: Timeframe): number {
   switch (tf) {
@@ -1023,6 +1026,18 @@ async function loadCandlesFromDb(): Promise<void> {
   if (rows.length > 0) {
     // eslint-disable-next-line no-console
     console.log(`Loaded ${rows.length} candles from DB (last ${MAX_CHART_HOURS}h).`);
+  }
+}
+
+/** Удалить из БД свечи старше CHART_HISTORY_DAYS */
+async function deleteCandlesOlderThanRetention(): Promise<void> {
+  const cutoff = new Date(Date.now() - CHART_HISTORY_DAYS * 24 * 3600 * 1000);
+  const result = await prisma.ohlcCandle.deleteMany({
+    where: { startTime: { lt: cutoff } }
+  });
+  if (result.count > 0) {
+    // eslint-disable-next-line no-console
+    console.log(`Deleted ${result.count} candles older than ${CHART_HISTORY_DAYS} days.`);
   }
 }
 
@@ -3867,12 +3882,14 @@ app.get("/trading-pairs", authMiddleware, requireNotBlockedMiddleware, async (_r
   return res.json({ pairs });
 });
 
-// --- OHLC candles ---
+// --- OHLC candles (последние из памяти; порциями из БД по ?before= для истории 30 дней) ---
+const CANDLES_PAGE_SIZE = 200;
 app.get("/candles", authMiddleware, requireNotBlockedMiddleware, async (req: AuthRequest, res) => {
-  const { pairId, timeframe = "30s", limit = "200" } = req.query as {
+  const { pairId, timeframe = "30s", limit, before } = req.query as {
     pairId?: string;
     timeframe?: string;
     limit?: string;
+    before?: string;
   };
 
   if (!pairId) {
@@ -3900,10 +3917,41 @@ app.get("/candles", authMiddleware, requireNotBlockedMiddleware, async (req: Aut
     return res.status(400).json({ message: "Invalid timeframe" });
   }
 
-  const parsedLimit = Number.parseInt(limit ?? "200", 10);
+  const pageSize = Math.min(
+    CANDLES_PAGE_SIZE,
+    Math.max(1, Number.parseInt(limit ?? String(CANDLES_PAGE_SIZE), 10) || CANDLES_PAGE_SIZE)
+  );
 
-  const candles = candleService.getCandles(parsedPairId, tf, parsedLimit || 200);
+  // Запрос истории «до» даты — порция из БД (скролл влево)
+  if (before) {
+    const beforeDate = new Date(before);
+    if (Number.isNaN(beforeDate.getTime())) {
+      return res.status(400).json({ message: "Invalid before date" });
+    }
+    const historyCutoff = new Date(Date.now() - CHART_HISTORY_DAYS * 24 * 3600 * 1000);
+    const rows = await prisma.ohlcCandle.findMany({
+      where: {
+        tradingPairId: parsedPairId,
+        timeframe: tf,
+        startTime: { lt: beforeDate, gte: historyCutoff }
+      },
+      orderBy: { startTime: "desc" },
+      take: pageSize
+    });
+    const candlesAsc = rows.reverse();
+    return res.json({
+      candles: candlesAsc.map((c) => ({
+        startTime: c.startTime.toISOString(),
+        open: Number(c.open),
+        high: Number(c.high),
+        low: Number(c.low),
+        close: Number(c.close)
+      }))
+    });
+  }
 
+  // Без before — последние свечи из памяти (real-time окно)
+  const candles = candleService.getCandles(parsedPairId, tf, pageSize);
   return res.json({
     candles: candles.map((c) => ({
       startTime: c.startTime.toISOString(),
@@ -4233,6 +4281,7 @@ setInterval(() => {
 async function bootstrap() {
   await priceService.init();
   await loadCandlesFromDb();
+  await deleteCandlesOlderThanRetention();
   candleService.setOnCandleClosed((pairId, timeframe, candle) => {
     persistCandle(pairId, timeframe, candle).catch((err) =>
       // eslint-disable-next-line no-console

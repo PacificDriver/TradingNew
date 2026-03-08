@@ -51,6 +51,9 @@ type EntryMarker = {
 
 type ChartMode = "line" | "candles" | "baseline" | "heikin_ashi" | "bars";
 
+/** Порог: когда слева от видимой области остаётся меньше баров — запрашиваем ещё историю */
+const BARS_BEFORE_LOAD_MORE = 50;
+
 type Props = {
   candles: CandlePoint[];
   markers?: EntryMarker[];
@@ -64,6 +67,10 @@ type Props = {
   showBB?: boolean;
   /** На мобильных — без рамки и скруглений (график «без краёв») */
   containerClassName?: string;
+  /** Подгрузка истории при скролле влево (вызов без аргументов) */
+  onLoadMoreHistory?: () => void;
+  /** Есть ли ещё данные в прошлом (не вызывать onLoadMoreHistory если false) */
+  hasMoreHistory?: boolean;
 };
 
 const DARK_THEME = {
@@ -121,7 +128,9 @@ function PriceChartInner({
   showRSI = false,
   showMACD = false,
   showBB = false,
-  containerClassName
+  containerClassName,
+  onLoadMoreHistory,
+  hasMoreHistory = true
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -593,6 +602,27 @@ function PriceChartInner({
   useEffect(() => {
     applyDataAndAnnotations();
   }, [normalizedCandles, heikinAshiCandles, chartMarkers, mode]);
+
+  // Подгрузка истории при скролле влево (порциями)
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !onLoadMoreHistory || !hasMoreHistory || normalizedCandles.length === 0) return;
+    const ts = chart.timeScale();
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const handler = (range: { from: number; to: number } | null) => {
+      if (range === null || range.from >= BARS_BEFORE_LOAD_MORE) return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        onLoadMoreHistory();
+      }, 300);
+    };
+    ts.subscribeVisibleLogicalRangeChange(handler);
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      ts.unsubscribeVisibleLogicalRangeChange(handler);
+    };
+  }, [normalizedCandles.length, onLoadMoreHistory, hasMoreHistory]);
 
   const overlay = loading ? (
     <div

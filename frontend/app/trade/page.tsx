@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGuard } from "../../components/AuthGuard";
 import {
@@ -123,6 +123,12 @@ function TradePageContent() {
   >([]);
   const [candlesLoading, setCandlesLoading] = useState(false);
   const [candlesError, setCandlesError] = useState<string | null>(null);
+  /** Есть ли ещё история слева (30 дней); сбрасывается при смене пары/таймфрейма */
+  const [hasMoreHistory, setHasMoreHistory] = useState(true);
+  const [loadingMoreHistory, setLoadingMoreHistory] = useState(false);
+  const CANDLES_PAGE_SIZE = 200;
+  const candlesRef = useRef(candles);
+  candlesRef.current = candles;
   const [amount, setAmount] = useState(10);
   const [duration, setDuration] = useState(60);
   const [placing, setPlacing] = useState(false);
@@ -327,7 +333,7 @@ function TradePageContent() {
     return () => clearInterval(t);
   }, [authChecked, selectedPairId, token, upsertPrice]);
 
-  // Подтягиваем историю свечей OHLC при загрузке и при смене пары/таймфрейма
+  // Подтягиваем историю свечей OHLC при загрузке и при смене пары/таймфрейма (первая порция, без before)
   useEffect(() => {
     if (!authChecked || selectedPairId == null) {
       setCandlesLoading(false);
@@ -338,11 +344,12 @@ function TradePageContent() {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     setCandlesError(null);
     setCandlesLoading(true);
+    setHasMoreHistory(true);
     async function loadCandles() {
       const controller = new AbortController();
       timeoutId = setTimeout(() => controller.abort(), 10000);
       try {
-        const limit = candleLimitFor5h[timeframe] ?? 200;
+        const limit = Math.min(candleLimitFor5h[timeframe] ?? 200, CANDLES_PAGE_SIZE);
         const query = new URLSearchParams({
           pairId: String(pairId),
           timeframe,
@@ -366,6 +373,7 @@ function TradePageContent() {
           close: Number(c.close)
         }));
         setCandles(mapped);
+        if (list.length < limit) setHasMoreHistory(false);
       } catch (e) {
         if (timeoutId) clearTimeout(timeoutId);
         if (!cancelled) {
@@ -386,7 +394,51 @@ function TradePageContent() {
       if (timeoutId) clearTimeout(timeoutId);
       setCandlesLoading(false);
     };
-  }, [authChecked, token, selectedPairId, timeframe, candleLimitFor5h, t]);
+  }, [authChecked, token, selectedPairId, timeframe, candleLimitFor5h, t, CANDLES_PAGE_SIZE]);
+
+  // Подгрузка старой истории порцией при скролле влево (before = первая свеча)
+  const loadMoreCandles = useCallback(() => {
+    const current = candlesRef.current;
+    if (loadingMoreHistory || !hasMoreHistory || !current.length || !authChecked || selectedPairId == null) return;
+    const before = current[0].startTime;
+    setLoadingMoreHistory(true);
+    const query = new URLSearchParams({
+      pairId: String(selectedPairId),
+      timeframe,
+      limit: String(CANDLES_PAGE_SIZE),
+      before: new Date(before).toISOString()
+    }).toString();
+    apiFetch<{ candles: { startTime: string; open: number; high: number; low: number; close: number }[] }>(
+      `/candles?${query}`,
+      { headers: authHeaders(token) }
+    )
+      .then((resp) => {
+        const list = Array.isArray(resp?.candles) ? resp.candles : [];
+        if (list.length === 0) {
+          setHasMoreHistory(false);
+          return;
+        }
+        const mapped = list.map((c) => ({
+          startTime: new Date(c.startTime).getTime(),
+          open: Number(c.open),
+          high: Number(c.high),
+          low: Number(c.low),
+          close: Number(c.close)
+        }));
+        setCandles((prev) => {
+          const merged = [...mapped, ...prev];
+          const seen = new Set<number>();
+          return merged.filter((c) => {
+            if (seen.has(c.startTime)) return false;
+            seen.add(c.startTime);
+            return true;
+          }).sort((a, b) => a.startTime - b.startTime);
+        });
+        if (list.length < CANDLES_PAGE_SIZE) setHasMoreHistory(false);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMoreHistory(false));
+  }, [authChecked, token, selectedPairId, timeframe, hasMoreHistory, loadingMoreHistory, CANDLES_PAGE_SIZE]);
 
   // Throttle: обновляем график по тикам не чаще чем раз в 120ms (меньше лишних ре-рендеров)
   const lastCandleUpdateRef = useRef<number>(0);
@@ -694,6 +746,8 @@ function TradePageContent() {
               showMACD={showMACD}
               showBB={showBB}
               containerClassName="rounded-xl glass h-full"
+              onLoadMoreHistory={loadMoreCandles}
+              hasMoreHistory={hasMoreHistory}
             />
           </div>
         </div>
@@ -908,6 +962,8 @@ function TradePageContent() {
                 showMACD={showMACD}
                 showBB={showBB}
                 containerClassName="rounded-none bg-transparent border-0 shadow-none xl:rounded-xl xl:glass"
+                onLoadMoreHistory={loadMoreCandles}
+                hasMoreHistory={hasMoreHistory}
               />
               {lastSettledResult && (
                 <ChartResultFeedback
