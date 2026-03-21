@@ -35,6 +35,7 @@ export default function RegisterPage() {
   const [captchaAnswer, setCaptchaAnswer] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [acceptPolicies, setAcceptPolicies] = useState(false);
 
   const refCode = refFromUrl || (referralCode?.trim() || undefined);
 
@@ -77,6 +78,7 @@ export default function RegisterPage() {
           password,
           captchaId,
           captchaAnswer,
+          acceptPolicies,
           ...(refCode && { referralCode: refCode })
         })
       });
@@ -181,6 +183,26 @@ export default function RegisterPage() {
               autoComplete="off"
             />
           </div>
+          <label className="flex items-start gap-3 cursor-pointer rounded-lg border border-slate-700/60 bg-slate-900/40 px-3 py-3">
+            <input
+              type="checkbox"
+              checked={acceptPolicies}
+              onChange={(e) => setAcceptPolicies(e.target.checked)}
+              className="mt-0.5 rounded border-slate-600 bg-slate-800 text-accent focus:ring-accent/50"
+              required
+            />
+            <span className="text-xs text-slate-300">
+              Я принимаю{" "}
+              <Link href="/policy" className="text-accent hover:underline">
+                политику обработки данных
+              </Link>{" "}
+              и{" "}
+              <Link href="/privacy" className="text-accent hover:underline">
+                политику конфиденциальности
+              </Link>
+              .
+            </span>
+          </label>
           {error && (
             <p className="text-sm text-red-400 rounded-xl border border-red-500/30 bg-red-950/30 px-4 py-3">
               {error}

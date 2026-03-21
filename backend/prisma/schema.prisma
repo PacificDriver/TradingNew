@@ -77,6 +77,7 @@ model User {
   sessions             Session[]
   supportThread        SupportThread?
   paymentTransactions  PaymentTransaction[]
+  kycSubmissions       KycSubmission[]
   createdAt            DateTime @default(now())
 }
 
@@ -209,6 +210,22 @@ model ProcessedCallback {
 model AppSetting {
   key   String @id
   value String @db.Text
+}
+
+model KycSubmission {
+  id           Int      @id @default(autoincrement())
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentType  String   // "passport" | "utility_bill"
+  documentImage String   @db.Text
+  status        String   @default("pending") // pending | approved | rejected
+  adminNote     String?  @db.Text
+  reviewedById  Int?
+  reviewedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
 }
 
 // Аудит изменений баланса: каждая операция (сделка, пополнение, вывод, реферальный перевод)

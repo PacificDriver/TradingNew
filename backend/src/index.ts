@@ -98,6 +98,11 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, api: "auth,totp,sessions" });
 });
 
+app.get("/public/content", async (_req, res) => {
+  const data = await getPublicContentSettings();
+  return res.json(data);
+});
+
 function parseCookieValue(
   cookieHeader: string | undefined,
   name: string
@@ -391,6 +396,46 @@ async function getAppSetting(key: string): Promise<string | null> {
     select: { value: true }
   });
   return row?.value ?? null;
+}
+
+async function setAppSetting(key: string, value: string): Promise<void> {
+  await prisma.appSetting.upsert({
+    where: { key },
+    create: { key, value },
+    update: { value }
+  });
+}
+
+type PublicContentSettings = {
+  legalDetails: string;
+  policyPage: string;
+  privacyPage: string;
+};
+
+const DEFAULT_LEGAL_DETAILS =
+  "ООО \"AuraTrade\"\nИНН: 0000000000\nОГРН: 0000000000000\nЮридический адрес: г. Москва, ул. Примерная, д. 1";
+const DEFAULT_POLICY_PAGE =
+  "Политика обработки данных\n\nМы собираем email, технические данные сессии (IP, user-agent), историю торговых операций, пополнений и выводов.\n\nДанные используются для:\n- регистрации и входа в аккаунт;\n- исполнения финансовых операций;\n- защиты от мошенничества;\n- выполнения требований KYC/AML.\n\nПо вопросам обработки данных обратитесь в поддержку.";
+const DEFAULT_PRIVACY_PAGE =
+  "Политика конфиденциальности\n\nМы применяем технические и организационные меры защиты персональных данных. Доступ к данным ограничен, а действия администраторов логируются.\n\nДанные не передаются третьим лицам, кроме случаев, когда это необходимо для платежной инфраструктуры и требований законодательства.\n\nИспользуя сервис, вы подтверждаете согласие с данной политикой.";
+
+async function getPublicContentSettings(): Promise<PublicContentSettings> {
+  const [legalDetails, policyPage, privacyPage] = await Promise.all([
+    getAppSetting("public_legal_details"),
+    getAppSetting("public_policy_page"),
+    getAppSetting("public_privacy_page")
+  ]);
+  return {
+    legalDetails: legalDetails?.trim() || DEFAULT_LEGAL_DETAILS,
+    policyPage: policyPage?.trim() || DEFAULT_POLICY_PAGE,
+    privacyPage: privacyPage?.trim() || DEFAULT_PRIVACY_PAGE
+  };
+}
+
+function isAcceptableKycImageData(data: string): boolean {
+  if (!data.startsWith("data:image/")) return false;
+  if (!data.includes(";base64,")) return false;
+  return data.length <= 8_000_000;
 }
 
 async function getReferralWithdrawConfig(): Promise<{ viaManager: boolean; managerTelegram: string }> {
@@ -1237,12 +1282,13 @@ app.post(
   "/auth/register",
   rateLimitMiddleware({ windowMs: 60 * 1000, max: 5 }),
   async (req, res) => {
-  const { email, password, referralCode, captchaId, captchaAnswer } = req.body as {
+  const { email, password, referralCode, captchaId, captchaAnswer, acceptPolicies } = req.body as {
     email?: string;
     password?: string;
     referralCode?: string;
     captchaId?: string;
     captchaAnswer?: string;
+    acceptPolicies?: boolean;
   };
 
   if (!email || !password || password.length < 6) {
@@ -1256,6 +1302,9 @@ app.post(
   }
   if (!verifyCaptcha(captchaId, captchaAnswer)) {
     return res.status(400).json({ message: "Неверная капча. Обновите картинку и попробуйте снова." });
+  }
+  if (acceptPolicies !== true) {
+    return res.status(400).json({ message: "Необходимо принять политику обработки данных и политику конфиденциальности" });
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -1948,6 +1997,79 @@ app.patch("/me", authMiddlewareWithSession, async (req: AuthRequest, res) => {
   });
   return res.json({ useDemoMode: user.useDemoMode, demoBalance: user.demoBalance, balance: user.balance });
 });
+
+app.get("/kyc/me", authMiddleware, async (req: AuthRequest, res) => {
+  const latest = await prisma.kycSubmission.findFirst({
+    where: { userId: req.userId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      documentType: true,
+      status: true,
+      adminNote: true,
+      reviewedAt: true,
+      createdAt: true
+    }
+  });
+  if (!latest) {
+    return res.json({ kyc: null, approved: false });
+  }
+  return res.json({
+    kyc: {
+      ...latest,
+      reviewedAt: latest.reviewedAt?.toISOString() ?? null,
+      createdAt: latest.createdAt.toISOString()
+    },
+    approved: latest.status === "approved"
+  });
+});
+
+app.post(
+  "/kyc/submission",
+  authMiddleware,
+  rateLimitMiddleware({ windowMs: RATE_WINDOW_MS, max: 10 }),
+  requireNotBlockedMiddleware,
+  async (req: AuthRequest, res) => {
+    const userId = Number(req.userId);
+    if (!Number.isInteger(userId)) return res.status(401).json({ message: "Unauthorized" });
+    const body = req.body as { documentType?: string; documentImage?: string };
+    const documentType = String(body.documentType ?? "").trim().toLowerCase();
+    const documentImage = String(body.documentImage ?? "").trim();
+
+    if (documentType !== "passport" && documentType !== "utility_bill") {
+      return res.status(400).json({ message: "documentType must be passport or utility_bill" });
+    }
+    if (!isAcceptableKycImageData(documentImage)) {
+      return res.status(400).json({ message: "Некорректный файл. Загрузите изображение (JPG/PNG/WebP) до 5 МБ." });
+    }
+
+    const created = await prisma.kycSubmission.create({
+      data: {
+        userId,
+        documentType,
+        documentImage,
+        status: "pending",
+        adminNote: null,
+        reviewedById: null,
+        reviewedAt: null
+      },
+      select: {
+        id: true,
+        documentType: true,
+        status: true,
+        adminNote: true,
+        createdAt: true
+      }
+    });
+
+    return res.json({
+      kyc: {
+        ...created,
+        createdAt: created.createdAt.toISOString()
+      }
+    });
+  }
+);
 
 // Начисление средств на демо-баланс (только в демо-режиме)
 app.post(
@@ -3115,6 +3237,17 @@ app.post(
       message: "Вывод средств временно заблокирован"
     });
   }
+  const latestKyc = await prisma.kycSubmission.findFirst({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+    select: { status: true }
+  });
+  if (!latestKyc || latestKyc.status !== "approved") {
+    return res.status(403).json({
+      code: "KYC_REQUIRED",
+      message: "Для вывода средств необходимо пройти KYC"
+    });
+  }
 
   const { amount, pan, cardHolder, currency = "RUB" } = req.body as {
     amount?: number;
@@ -3540,6 +3673,140 @@ app.patch(
     }
     const config = await getTradingConfig();
     return res.json(config);
+  }
+);
+
+app.get(
+  "/admin/settings/content",
+  authMiddleware,
+  adminMiddleware,
+  async (_req: AuthRequest, res) => {
+    const data = await getPublicContentSettings();
+    return res.json(data);
+  }
+);
+
+app.patch(
+  "/admin/settings/content",
+  authMiddleware,
+  adminMiddleware,
+  async (req: AuthRequest, res) => {
+    const body = req.body as {
+      legalDetails?: string;
+      policyPage?: string;
+      privacyPage?: string;
+    };
+    if (typeof body.legalDetails === "string") {
+      await setAppSetting("public_legal_details", body.legalDetails.trim());
+    }
+    if (typeof body.policyPage === "string") {
+      await setAppSetting("public_policy_page", body.policyPage.trim());
+    }
+    if (typeof body.privacyPage === "string") {
+      await setAppSetting("public_privacy_page", body.privacyPage.trim());
+    }
+    const data = await getPublicContentSettings();
+    return res.json(data);
+  }
+);
+
+app.get(
+  "/admin/kyc-submissions",
+  authMiddleware,
+  adminMiddleware,
+  async (req: AuthRequest, res) => {
+    const status = typeof req.query.status === "string" ? req.query.status.trim().toLowerCase() : "";
+    const where = status ? { status } : {};
+    const list = await prisma.kycSubmission.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: { user: { select: { id: true, email: true } } }
+    });
+    return res.json({
+      submissions: list.map((s) => ({
+        id: s.id,
+        userId: s.userId,
+        userEmail: s.user.email,
+        documentType: s.documentType,
+        status: s.status,
+        adminNote: s.adminNote,
+        reviewedById: s.reviewedById,
+        reviewedAt: s.reviewedAt?.toISOString() ?? null,
+        createdAt: s.createdAt.toISOString(),
+        updatedAt: s.updatedAt.toISOString()
+      }))
+    });
+  }
+);
+
+app.get(
+  "/admin/kyc-submissions/:id",
+  authMiddleware,
+  adminMiddleware,
+  async (req: AuthRequest, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+    const item = await prisma.kycSubmission.findUnique({
+      where: { id },
+      include: { user: { select: { id: true, email: true } } }
+    });
+    if (!item) return res.status(404).json({ message: "KYC submission not found" });
+    return res.json({
+      submission: {
+        id: item.id,
+        userId: item.userId,
+        userEmail: item.user.email,
+        documentType: item.documentType,
+        documentImage: item.documentImage,
+        status: item.status,
+        adminNote: item.adminNote,
+        reviewedById: item.reviewedById,
+        reviewedAt: item.reviewedAt?.toISOString() ?? null,
+        createdAt: item.createdAt.toISOString(),
+        updatedAt: item.updatedAt.toISOString()
+      }
+    });
+  }
+);
+
+app.patch(
+  "/admin/kyc-submissions/:id",
+  authMiddleware,
+  adminMiddleware,
+  async (req: AuthRequest, res) => {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+    const body = req.body as { status?: string; adminNote?: string };
+    const status = String(body.status ?? "").trim().toLowerCase();
+    if (status !== "approved" && status !== "rejected") {
+      return res.status(400).json({ message: "status must be approved or rejected" });
+    }
+    const adminNote = typeof body.adminNote === "string" ? body.adminNote.trim() : null;
+    const updated = await prisma.kycSubmission.update({
+      where: { id },
+      data: {
+        status,
+        adminNote,
+        reviewedById: req.userId ?? null,
+        reviewedAt: new Date()
+      },
+      include: { user: { select: { id: true, email: true } } }
+    });
+    return res.json({
+      submission: {
+        id: updated.id,
+        userId: updated.userId,
+        userEmail: updated.user.email,
+        documentType: updated.documentType,
+        status: updated.status,
+        adminNote: updated.adminNote,
+        reviewedById: updated.reviewedById,
+        reviewedAt: updated.reviewedAt?.toISOString() ?? null,
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString()
+      }
+    });
   }
 );
 

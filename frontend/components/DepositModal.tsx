@@ -62,14 +62,16 @@ function DepositModal({ onClose }: { onClose: () => void }) {
               </svg>
             </button>
           </div>
-          <p className="text-slate-400 text-sm mb-6">{t("depositModal.message")}</p>
+          <p className="text-slate-400 text-sm mb-6">
+            Пополнение доступно через платежную страницу. Перейдите к оплате, чтобы создать заявку.
+          </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Link
-              href="/support"
+              href="/deposit"
               onClick={onClose}
               className="btn-primary flex-1 py-3 px-4 rounded-xl text-center font-semibold transition-colors hover:opacity-90"
             >
-              {t("depositModal.supportBtn")}
+              Открыть платежную страницу
             </Link>
             <button
               type="button"

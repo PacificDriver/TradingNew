@@ -9,6 +9,23 @@ import { apiFetch, getDisplayMessage } from "../../lib/api";
 import { useLocale } from "../../lib/i18n";
 
 type TabId = "deposit" | "withdraw";
+type KycStatus = "pending" | "approved" | "rejected";
+
+type KycMeResponse = {
+  approved: boolean;
+  kyc: null | {
+    id: number;
+    documentType: "passport" | "utility_bill";
+    status: KycStatus;
+    adminNote: string | null;
+    createdAt: string;
+    reviewedAt: string | null;
+  };
+};
+
+type KycSubmitResponse = {
+  kyc: NonNullable<KycMeResponse["kyc"]>;
+};
 
 function formatBalance(value: number | undefined | null) {
   if (value == null) return "—";
@@ -55,6 +72,13 @@ export default function DepositPage() {
   const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
   const [withdrawSuccess, setWithdrawSuccess] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
+  const [kycLoading, setKycLoading] = useState(false);
+  const [kycSubmitting, setKycSubmitting] = useState(false);
+  const [kycError, setKycError] = useState<string | null>(null);
+  const [kycInfo, setKycInfo] = useState<KycMeResponse["kyc"]>(null);
+  const [kycApproved, setKycApproved] = useState(false);
+  const [kycDocumentType, setKycDocumentType] = useState<"passport" | "utility_bill">("passport");
+  const [kycFile, setKycFile] = useState<File | null>(null);
 
   const doneReturn = searchParams.get("done") === "1";
 
@@ -77,6 +101,24 @@ export default function DepositPage() {
       .then((data) => refreshUser(token, { ...user, demoBalance: data.user.demoBalance, balance: data.user.balance, useDemoMode: data.user.useDemoMode }))
       .catch(() => {});
   }, [doneReturn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!token) return;
+    setKycLoading(true);
+    apiFetch<KycMeResponse>("/kyc/me", {
+      credentials: "include",
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then((data) => {
+        setKycInfo(data.kyc);
+        setKycApproved(data.approved);
+      })
+      .catch(() => {
+        setKycInfo(null);
+        setKycApproved(false);
+      })
+      .finally(() => setKycLoading(false));
+  }, [token]);
 
   const formatCardNumber = (v: string) => {
     const digits = v.replace(/\D/g, "").slice(0, 16);
@@ -137,6 +179,10 @@ export default function DepositPage() {
 
   const handleWithdrawSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!kycApproved) {
+      setWithdrawError("Для вывода сначала пройдите KYC.");
+      return;
+    }
     const num = parseFloat(withdrawAmount.replace(",", "."));
     const balance = Number(user?.balance ?? 0);
     if (!Number.isFinite(num) || num < 1 || num > balance) return;
@@ -179,6 +225,37 @@ export default function DepositPage() {
       setWithdrawSuccess(true);
       setWithdrawAmount("");
       setWithdrawCard("");
+    }
+  };
+
+  const handleKycSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!token || !kycFile) return;
+    setKycError(null);
+    setKycSubmitting(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
+        reader.readAsDataURL(kycFile);
+      });
+      const data = await apiFetch<KycSubmitResponse>("/kyc/submission", {
+        method: "POST",
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentType: kycDocumentType,
+          documentImage: dataUrl
+        })
+      });
+      setKycInfo(data.kyc);
+      setKycApproved(false);
+      setKycFile(null);
+    } catch (err) {
+      setKycError(getDisplayMessage(err, t));
+    } finally {
+      setKycSubmitting(false);
     }
   };
 
@@ -449,12 +526,58 @@ export default function DepositPage() {
                 )}
                 <button
                   type="submit"
-                  disabled={!withdrawValid || withdrawSubmitting || !!user?.withdrawBlockedAt}
+                  disabled={!withdrawValid || withdrawSubmitting || !!user?.withdrawBlockedAt || !kycApproved}
                   className="w-full rounded-xl border border-slate-600 bg-slate-800/80 hover:bg-slate-700/80 py-4 text-base font-semibold text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {withdrawSubmitting ? (highHelpEnabled ? t("deposit.creating") : t("deposit.processing")) : t("deposit.withdrawBtn")}
                 </button>
               </form>
+              <div className="mt-6 rounded-xl border border-slate-700/60 bg-slate-900/40 p-4">
+                <h3 className="text-[11px] uppercase tracking-[0.18em] text-slate-500 mb-2">KYC для вывода</h3>
+                {kycLoading ? (
+                  <p className="text-sm text-slate-400">Проверяем статус KYC...</p>
+                ) : kycApproved ? (
+                  <p className="text-sm text-emerald-400">KYC подтвержден. Вывод средств доступен.</p>
+                ) : (
+                  <>
+                    <p className="text-sm text-slate-300 mb-3">
+                      Загрузите паспорт или utility bill. Администратор проверит документ и подтвердит KYC.
+                    </p>
+                    {kycInfo?.status === "pending" && (
+                      <p className="text-sm text-amber-300 mb-3">Заявка на проверке. Обычно проверка занимает до 24 часов.</p>
+                    )}
+                    {kycInfo?.status === "rejected" && (
+                      <p className="text-sm text-red-300 mb-3">
+                        KYC отклонен{kycInfo.adminNote ? `: ${kycInfo.adminNote}` : "."}
+                      </p>
+                    )}
+                    {kycError && <p className="text-sm text-red-300 mb-3">{kycError}</p>}
+                    <form onSubmit={handleKycSubmit} className="space-y-3">
+                      <select
+                        value={kycDocumentType}
+                        onChange={(e) => setKycDocumentType(e.target.value as "passport" | "utility_bill")}
+                        className="w-full rounded-lg border border-slate-700/60 bg-slate-900/60 px-3 py-2 text-sm text-slate-200"
+                      >
+                        <option value="passport">Паспорт</option>
+                        <option value="utility_bill">Utility bill</option>
+                      </select>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={(e) => setKycFile(e.target.files?.[0] ?? null)}
+                        className="block w-full text-sm text-slate-300 file:mr-4 file:rounded-lg file:border file:border-slate-600 file:bg-slate-800 file:px-3 file:py-2 file:text-slate-200"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!kycFile || kycSubmitting}
+                        className="rounded-lg border border-slate-600 bg-slate-800/80 px-4 py-2 text-sm font-medium text-slate-200 disabled:opacity-50"
+                      >
+                        {kycSubmitting ? "Отправка..." : "Отправить на проверку"}
+                      </button>
+                    </form>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}

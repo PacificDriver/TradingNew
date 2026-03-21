@@ -28,7 +28,7 @@ type TradingPairRow = {
   currentPrice: number;
 };
 
-type AdminTab = "dashboard" | "users" | "pairs" | "audit" | "trades" | "partners" | "referral" | "trading";
+type AdminTab = "dashboard" | "users" | "pairs" | "audit" | "trades" | "partners" | "referral" | "trading" | "content" | "kyc";
 
 type ReferralSettings = {
   viaManager: boolean;
@@ -40,6 +40,31 @@ type TradingSettings = {
   maxActiveTrades: number;
   minStake: number;
   maxStake: number;
+};
+
+type ContentSettings = {
+  legalDetails: string;
+  policyPage: string;
+  privacyPage: string;
+};
+
+type KycStatus = "pending" | "approved" | "rejected";
+
+type KycSubmissionRow = {
+  id: number;
+  userId: number;
+  userEmail: string;
+  documentType: string;
+  status: KycStatus;
+  adminNote: string | null;
+  reviewedById: number | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type KycSubmissionDetails = KycSubmissionRow & {
+  documentImage: string;
 };
 
 type AdminStats = {
@@ -176,6 +201,20 @@ export default function AdminPage() {
   });
   const [tradingLoading, setTradingLoading] = useState(false);
   const [tradingSaving, setTradingSaving] = useState(false);
+  const [contentSettings, setContentSettings] = useState<ContentSettings>({
+    legalDetails: "",
+    policyPage: "",
+    privacyPage: ""
+  });
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentSaving, setContentSaving] = useState(false);
+  const [kycItems, setKycItems] = useState<KycSubmissionRow[]>([]);
+  const [kycLoading, setKycLoading] = useState(false);
+  const [kycStatusFilter, setKycStatusFilter] = useState<"all" | KycStatus>("pending");
+  const [kycOpenId, setKycOpenId] = useState<number | null>(null);
+  const [kycDetails, setKycDetails] = useState<KycSubmissionDetails | null>(null);
+  const [kycDetailsLoading, setKycDetailsLoading] = useState(false);
+  const [kycReviewingId, setKycReviewingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!authChecked) return;
@@ -338,7 +377,23 @@ export default function AdminPage() {
         .catch(() => setTradingSettings({ winPayoutPercent: 100, maxActiveTrades: 0, minStake: 1, maxStake: 0 }))
         .finally(() => setTradingLoading(false));
     }
-  }, [authChecked, user?.isAdmin, token, activeTab]);
+    if (activeTab === "content") {
+      setContentLoading(true);
+      apiFetch<ContentSettings>("/admin/settings/content", { headers: authHeaders(token) })
+        .then(setContentSettings)
+        .catch(() => setContentSettings({ legalDetails: "", policyPage: "", privacyPage: "" }))
+        .finally(() => setContentLoading(false));
+    }
+    if (activeTab === "kyc") {
+      setKycLoading(true);
+      const params = new URLSearchParams();
+      if (kycStatusFilter !== "all") params.set("status", kycStatusFilter);
+      apiFetch<{ submissions: KycSubmissionRow[] }>(`/admin/kyc-submissions?${params}`, { headers: authHeaders(token) })
+        .then((data) => setKycItems(data.submissions ?? []))
+        .catch(() => setKycItems([]))
+        .finally(() => setKycLoading(false));
+    }
+  }, [authChecked, user?.isAdmin, token, activeTab, kycStatusFilter]);
 
   async function saveTradingSettings() {
     if (!token) return;
@@ -362,6 +417,23 @@ export default function AdminPage() {
     }
   }
 
+  async function saveContentSettings() {
+    if (!token) return;
+    setContentSaving(true);
+    try {
+      const data = await apiFetch<ContentSettings>("/admin/settings/content", {
+        method: "PATCH",
+        headers: authHeaders(token),
+        body: JSON.stringify(contentSettings)
+      });
+      setContentSettings(data);
+    } catch {
+      // ignore
+    } finally {
+      setContentSaving(false);
+    }
+  }
+
   async function saveReferralSettings() {
     if (!token) return;
     setReferralSaving(true);
@@ -379,6 +451,45 @@ export default function AdminPage() {
       // ignore
     } finally {
       setReferralSaving(false);
+    }
+  }
+
+  async function openKycDetails(id: number) {
+    if (!token) return;
+    setKycOpenId(id);
+    setKycDetailsLoading(true);
+    try {
+      const data = await apiFetch<{ submission: KycSubmissionDetails }>(`/admin/kyc-submissions/${id}`, {
+        headers: authHeaders(token)
+      });
+      setKycDetails(data.submission);
+    } catch {
+      setKycDetails(null);
+    } finally {
+      setKycDetailsLoading(false);
+    }
+  }
+
+  async function reviewKyc(id: number, status: "approved" | "rejected") {
+    if (!token) return;
+    const adminNote = status === "rejected"
+      ? (window.prompt("Причина отклонения (необязательно):") ?? "")
+      : "";
+    setKycReviewingId(id);
+    try {
+      const data = await apiFetch<{ submission: KycSubmissionRow }>(`/admin/kyc-submissions/${id}`, {
+        method: "PATCH",
+        headers: authHeaders(token),
+        body: JSON.stringify({ status, adminNote })
+      });
+      setKycItems((prev) => prev.map((item) => (item.id === id ? data.submission : item)));
+      if (kycDetails?.id === id) {
+        setKycDetails((prev) => (prev ? { ...prev, ...data.submission } : prev));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setKycReviewingId(null);
     }
   }
 
@@ -541,7 +652,9 @@ export default function AdminPage() {
             { id: "trades" as const, label: "Сделки" },
             { id: "partners" as const, label: "Партнёры" },
             { id: "referral" as const, label: "Реферал" },
-            { id: "trading" as const, label: "Торговля" }
+            { id: "trading" as const, label: "Торговля" },
+            { id: "content" as const, label: "Контент" },
+            { id: "kyc" as const, label: "KYC" }
           ].map(({ id, label }) => (
             <button
               key={id}
@@ -1223,6 +1336,168 @@ export default function AdminPage() {
                 >
                   {tradingSaving ? "Сохранение…" : "Сохранить"}
                 </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "content" && (
+          <div className="card space-y-6">
+            <div className="border-b border-slate-700/60 pb-4">
+              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Контент сайта</h2>
+              <p className="text-sm text-slate-400 mt-1">
+                Главная страница (реквизиты), страницы политики обработки данных и конфиденциальности.
+              </p>
+            </div>
+            {contentLoading ? (
+              <div className="py-8 text-center text-slate-500 text-sm">Загрузка…</div>
+            ) : (
+              <div className="space-y-5">
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-2">Реквизиты юр.лица</label>
+                  <textarea
+                    value={contentSettings.legalDetails}
+                    onChange={(e) => setContentSettings((s) => ({ ...s, legalDetails: e.target.value }))}
+                    rows={6}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm outline-none focus:border-accent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-2">Политика обработки данных</label>
+                  <textarea
+                    value={contentSettings.policyPage}
+                    onChange={(e) => setContentSettings((s) => ({ ...s, policyPage: e.target.value }))}
+                    rows={10}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm outline-none focus:border-accent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-2">Политика конфиденциальности</label>
+                  <textarea
+                    value={contentSettings.privacyPage}
+                    onChange={(e) => setContentSettings((s) => ({ ...s, privacyPage: e.target.value }))}
+                    rows={10}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm outline-none focus:border-accent"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={saveContentSettings}
+                  disabled={contentSaving}
+                  className="btn-primary py-2.5 px-5 disabled:opacity-50"
+                >
+                  {contentSaving ? "Сохранение…" : "Сохранить"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "kyc" && (
+          <div className="card overflow-hidden">
+            <div className="border-b border-slate-700/60 px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap">
+              <h2 className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Проверка KYC</h2>
+              <select
+                value={kycStatusFilter}
+                onChange={(e) => setKycStatusFilter(e.target.value as "all" | KycStatus)}
+                className="rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-1.5 text-sm"
+              >
+                <option value="pending">Только pending</option>
+                <option value="approved">Только approved</option>
+                <option value="rejected">Только rejected</option>
+                <option value="all">Все</option>
+              </select>
+            </div>
+            {kycLoading ? (
+              <div className="py-12 text-center text-slate-500 text-sm">Загрузка…</div>
+            ) : kycItems.length === 0 ? (
+              <div className="py-10 px-4 text-center text-slate-500 text-sm">Заявок нет</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[900px] text-sm">
+                  <thead className="border-b border-slate-700/60">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">Дата</th>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">Пользователь</th>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">Тип документа</th>
+                      <th className="px-4 py-3 text-left text-slate-500 font-medium">Статус</th>
+                      <th className="px-4 py-3 text-right text-slate-500 font-medium">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {kycItems.map((item) => (
+                      <tr key={item.id} className="hover:bg-slate-800/30">
+                        <td className="px-4 py-3 text-slate-400 text-xs">{new Date(item.createdAt).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-slate-200">{item.userEmail}</td>
+                        <td className="px-4 py-3 text-slate-400">{item.documentType}</td>
+                        <td className="px-4 py-3 text-slate-300">{item.status}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-2 justify-end">
+                            <button
+                              type="button"
+                              onClick={() => openKycDetails(item.id)}
+                              className="rounded-md border border-slate-600 bg-slate-800/80 px-2 py-1.5 text-[11px] text-slate-300 hover:bg-slate-700/80"
+                            >
+                              Документ
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => reviewKyc(item.id, "approved")}
+                              disabled={kycReviewingId === item.id || item.status === "approved"}
+                              className="rounded-md border border-emerald-500/50 bg-emerald-950/30 px-2 py-1.5 text-[11px] text-emerald-400 disabled:opacity-50"
+                            >
+                              Одобрить
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => reviewKyc(item.id, "rejected")}
+                              disabled={kycReviewingId === item.id || item.status === "rejected"}
+                              className="rounded-md border border-red-500/50 bg-red-950/30 px-2 py-1.5 text-[11px] text-red-400 disabled:opacity-50"
+                            >
+                              Отклонить
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {kycOpenId != null && (
+              <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="w-full max-w-3xl rounded-2xl border border-slate-700 bg-slate-900 p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-slate-200">KYC #{kycOpenId}</h3>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setKycOpenId(null);
+                        setKycDetails(null);
+                      }}
+                      className="rounded-md border border-slate-600 px-2 py-1 text-xs text-slate-300"
+                    >
+                      Закрыть
+                    </button>
+                  </div>
+                  {kycDetailsLoading ? (
+                    <p className="text-sm text-slate-400">Загрузка документа...</p>
+                  ) : kycDetails ? (
+                    <div className="space-y-3">
+                      <p className="text-xs text-slate-400">
+                        {kycDetails.userEmail} • {kycDetails.documentType} • {kycDetails.status}
+                      </p>
+                      <img
+                        src={kycDetails.documentImage}
+                        alt="KYC document"
+                        className="max-h-[70vh] w-auto rounded-lg border border-slate-700"
+                      />
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-400">Не удалось загрузить документ.</p>
+                  )}
+                </div>
               </div>
             )}
           </div>
